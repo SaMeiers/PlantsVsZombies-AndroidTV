@@ -2182,6 +2182,7 @@ static int GetVSCostDefault(SeedType theSeedType) {
         case SeedType::SEED_ZOMBIE_POGO:
             return 225;
         case SeedType::SEED_ZOMBIE_GARGANTUAR:
+        case SeedType::SEED_ZOMBIE_SUPER_NOVA_GARGANTUAR:
             return 250;
         case SeedType::SEED_MELONPULT:
         case SeedType::SEED_ZOMBIE_FLAG:
@@ -2234,6 +2235,7 @@ static int GetVSRefreshTimeDefault(SeedType theSeedType) {
             case SeedType::SEED_ZOMBIE_CATAPULT:
             case SeedType::SEED_ZOMBIE_GARGANTUAR:
             case SeedType::SEED_ZOMBIE_GIGA_GARGANTUAR:
+            case SeedType::SEED_ZOMBIE_SUPER_NOVA_GARGANTUAR:
                 return 6000;
             default:
                 return 750;

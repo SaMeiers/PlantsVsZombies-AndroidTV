@@ -697,6 +697,7 @@ void GamepadControls::UpdatePreviewReanim() {
                     return;
                 case ZombieType::ZOMBIE_GARGANTUAR:
                 case ZombieType::ZOMBIE_GIGA_GARGANTUAR:
+                case ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR:
                     theDrawHeightOffset += 30.0;
                     break;
                 case ZombieType::ZOMBIE_POLEVAULTER:

@@ -2902,6 +2902,16 @@ void Board::processServerEvent(const BaseEvent *event) {
             if (homura::FindInMap(serverZombieIDMap, serverZombieID, clientZombieID)) {
                 Zombie *aZombie = mZombies.DataArrayGet(clientZombieID);
                 aZombie->mPosX = event1->data2.f32;
+                if (aZombie->mZombieType == ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR) {
+                    Plant *aTargetPlant = aZombie->FindPlantTarget(ZombieAttackType::ATTACKTYPE_CHEW);
+                    if (aTargetPlant != nullptr) {
+                        aZombie->mTargetPlantID = PlantID(mPlants.DataArrayGetID(aTargetPlant));
+                        aZombie->mTargetCol = int(aTargetPlant->mSeedType);
+                    } else {
+                        aZombie->mTargetPlantID = PlantID::PLANTID_NULL;
+                        aZombie->mTargetCol = int(SeedType::SEED_NONE);
+                    }
+                }
                 aZombie->mZombiePhase = PHASE_GARGANTUAR_SMASHING;
                 mApp->PlayFoley(FOLEY_LOW_GROAN);
                 aZombie->PlayZombieReanim("anim_smash", REANIM_PLAY_ONCE_AND_HOLD, 20, 16.0f);
@@ -6661,16 +6671,7 @@ void Board::DrawUITop(Sexy::Graphics *g) {
                     continue;
                 }
 
-                switch (aZombie->mZombieType) {
-                    case ZombieType::ZOMBIE_GARGANTUAR:
-                    case ZombieType::ZOMBIE_REDEYE_GARGANTUAR:
-                    case ZombieType::ZOMBIE_GIGA_GARGANTUAR:
-                        hasGargantuarInTopRow = true;
-                        break;
-
-                    default:
-                        break;
-                }
+                hasGargantuarInTopRow = aZombie->IsGargantuar();
 
                 if (hasGargantuarInTopRow) {
                     break;

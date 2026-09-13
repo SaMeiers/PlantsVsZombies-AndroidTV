@@ -98,6 +98,7 @@ ZombieDefinition gExtendedZombieDefs[] = {
     {ZOMBIE_DOGWALKER, REANIM_DOGWALKER, 2, 18, 5, 1000, "DOGWALKER_ZOMBIE"},
     {ZOMBIE_DOG, REANIM_DOG, 1, 18, 1, 0, "ZOMBIE_DOG"},
     {ZOMBIE_TELEPORTATION, REANIM_ZOMBIE_TELEPORTATION, 2, 18, 5, 1000, "TELEPORTATION_ZOMBIE"},
+    {ZOMBIE_SUPER_NOVA_GARGANTUAR, REANIM_SUPER_NOVA_GARGANTUAR, 10, 48, 15, 1500, "SUPER_NOVA_GARGANTUAR"},
 };
 
 ZombieDefinition &GetZombieDefinition(ZombieType theZombieType) {
@@ -355,6 +356,22 @@ void Zombie::ZombieInitialize(int theRow, ZombieType theType, bool theVariant, Z
             break;
         }
 
+        case ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR:
+            mWidth = 180;
+            mHeight = 180;
+            mBodyHealth = 3000;
+            mAnimFrames = 24;
+            mAnimTicksPerFrame = 8;
+            mPosX = float(WIDE_BOARD_WIDTH + 45 + Rand(10));
+            mZombieRect = Rect(-17, -38, 125, 154);
+            mZombieAttackRect = Rect(-30, -38, 89, 154);
+            mVariant = false;
+            mRenderOrder = Board::MakeRenderOrder(RenderLayer::RENDER_LAYER_ZOMBIE, mRow, 8);
+            mHasObject = false;
+            mTargetPlantID = PlantID::PLANTID_NULL;
+            mTargetCol = int(SeedType::SEED_NONE);
+            break;
+
         default:
             break;
     }
@@ -569,6 +586,9 @@ void Zombie::UpdateActions() {
     if (mZombieType == ZombieType::ZOMBIE_TELEPORTATION) {
         UpdateZombieTeleportation();
     }
+    if (mZombieType == ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR) {
+        UpdateSuperNovaGargantuar();
+    }
 }
 
 void Zombie::UpdateZombieTeleportation() {
@@ -738,8 +758,12 @@ void Zombie::UpdatePlaying() {
         UpdateExplorerProjectiles();
     }
 
-    if (IsImmobilizied() && mZombieType == ZombieType::ZOMBIE_GIGA_GARGANTUAR) {
-        InterruptLightning();
+    if (IsImmobilizied()) {
+        if (mZombieType == ZombieType::ZOMBIE_GIGA_GARGANTUAR) {
+            InterruptLightning();
+        } else if (mZombieType == ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR) {
+            InterruptSuperNovaDestroy();
+        }
     }
 
     if (!IsImmobilizied()) {
@@ -3138,6 +3162,19 @@ void Zombie::InterruptLightning() {
     UpdateAnimSpeed();
 }
 
+void Zombie::InterruptSuperNovaDestroy() {
+    if (mTargetCol == int(SeedType::SEED_NONE)) {
+        return;
+    }
+
+    mTargetPlantID = PlantID::PLANTID_NULL;
+    mTargetCol = int(SeedType::SEED_NONE);
+    mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
+
+    StartWalkAnim(20);
+    UpdateAnimSpeed();
+}
+
 void Zombie::UpdateGigaImp() {
     if (!mHasHead || IsDeadOrDying()) {
         return;
@@ -3237,6 +3274,141 @@ void Zombie::UpdateGigaImp() {
         }
         return;
     }
+}
+
+void Zombie::UpdateSuperNovaGargantuar() {
+    Reanimation *aBodyReanim = mApp->ReanimationTryToGet(mBodyReanimID);
+    if (aBodyReanim == nullptr) {
+        return;
+    }
+
+    if (mZombiePhase == ZombiePhase::PHASE_SUPER_NOVA_GARGANTUAR_DESTROY) {
+        if (aBodyReanim->ShouldTriggerTimedEvent(0.3f)) {
+            const auto aTargetSeedType = SeedType(mTargetCol);
+            Plant *aMatchingPlant = nullptr;
+            while (mBoard->IteratePlants(aMatchingPlant)) {
+                if (aMatchingPlant->NotOnGround() || aMatchingPlant->mSeedType != aTargetSeedType) {
+                    continue;
+                }
+
+                const int aRenderOrder = Board::MakeRenderOrder(RenderLayer::RENDER_LAYER_PARTICLE, aMatchingPlant->mRow, 1);
+                const auto aEffectX = float(aMatchingPlant->mX);
+                const auto aEffectY = float(aMatchingPlant->mY);
+                if (Reanimation *aSuperNova = mApp->AddReanimation(aEffectX, aEffectY, aRenderOrder, ReanimationType::REANIM_SUPER_NOVA)) {
+                    aSuperNova->PlayReanim("anim_done", ReanimLoopType::REANIM_PLAY_ONCE_FULL_LAST_FRAME, 0, 12.0f);
+                }
+                aMatchingPlant->Die();
+            }
+            mTargetCol = int(SeedType::SEED_NONE);
+        }
+
+        if (aBodyReanim->mLoopCount > 0) {
+            mTargetCol = int(SeedType::SEED_NONE);
+            mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
+            StartWalkAnim(20);
+        }
+        return;
+    }
+
+    if (mZombiePhase == ZombiePhase::PHASE_GARGANTUAR_SMASHING) {
+        if (aBodyReanim->ShouldTriggerTimedEvent(0.64f)) {
+            if (Zombie *aZombie = FindZombieTarget()) {
+                aZombie->TakeDamage(1500, 0U);
+            }
+
+            if (Plant *aPlant = FindPlantTarget(ZombieAttackType::ATTACKTYPE_CHEW)) {
+                if (aPlant->mSeedType == SeedType::SEED_SPIKEROCK) {
+                    TakeDamage(20, 32U);
+                    aPlant->SpikeRockTakeDamage();
+                    if (aPlant->mPlantHealth <= 0) {
+                        SquishAllInSquare(aPlant->mPlantCol, aPlant->mRow, ZombieAttackType::ATTACKTYPE_CHEW);
+                    }
+                } else {
+                    SquishAllInSquare(aPlant->mPlantCol, aPlant->mRow, ZombieAttackType::ATTACKTYPE_CHEW);
+                }
+            }
+
+            if (mApp->IsScaryPotterLevel()) {
+                const int aGridX = mBoard->PixelToGridX(int(mPosX), int(mPosY));
+                if (GridItem *aScaryPot = mBoard->GetScaryPotAt(aGridX, mRow)) {
+                    mBoard->mChallenge->ScaryPotterOpenPot(aScaryPot);
+                }
+            }
+
+            if (mApp->IsIZombieLevel()) {
+                if (GridItem *aBrain = mBoard->mChallenge->IZombieGetBrainTarget(this)) {
+                    mBoard->mChallenge->IZombieSquishBrain(aBrain);
+                }
+            }
+
+            mApp->PlayFoley(FoleyType::FOLEY_THUMP);
+            mBoard->ShakeBoard(0, 3);
+        }
+
+        if (aBodyReanim->mLoopCount > 0) {
+            Plant *aTargetPlant = mBoard->mPlants.DataArrayTryToGet(mTargetPlantID);
+            const bool aTargetDied = mTargetPlantID != PlantID::PLANTID_NULL && (aTargetPlant == nullptr || aTargetPlant->NotOnGround());
+            bool hasMatchingPlant = false;
+            if (aTargetDied) {
+                Plant *aMatchingPlant = nullptr;
+                while (mBoard->IteratePlants(aMatchingPlant)) {
+                    if (aMatchingPlant != aTargetPlant && !aMatchingPlant->NotOnGround() && aMatchingPlant->mSeedType == SeedType(mTargetCol)) {
+                        hasMatchingPlant = true;
+                        break;
+                    }
+                }
+            }
+
+            mTargetPlantID = PlantID::PLANTID_NULL;
+
+            if (aTargetDied && hasMatchingPlant) {
+                mZombiePhase = ZombiePhase::PHASE_SUPER_NOVA_GARGANTUAR_DESTROY;
+                PlayZombieReanim("anim_skill", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 20, 16.0f);
+            } else {
+                mTargetCol = int(SeedType::SEED_NONE);
+                mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
+                StartWalkAnim(20);
+            }
+        }
+
+        return;
+    }
+
+    if (IsImmobilizied() || !mHasHead || IsRemoteClientOrViewer()) {
+        return;
+    }
+
+    Plant *aTargetPlant = FindPlantTarget(ZombieAttackType::ATTACKTYPE_CHEW);
+    bool doSmash = aTargetPlant != nullptr || FindZombieTarget() != nullptr;
+    if (mApp->IsScaryPotterLevel()) {
+        const int aGridX = mBoard->PixelToGridX(int(mPosX), int(mPosY));
+        doSmash = doSmash || mBoard->GetScaryPotAt(aGridX, mRow) != nullptr;
+    } else if (mApp->IsIZombieLevel()) {
+        doSmash = doSmash || mBoard->mChallenge->IZombieGetBrainTarget(this) != nullptr;
+    }
+
+    if (!doSmash) {
+        return;
+    }
+
+    if (IsRemoteServer()) {
+        U16UNI32_Event event{};
+        event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_GARGANTUAR_START_SMASH;
+        event.data1 = uint16_t(mBoard->mZombies.DataArrayGetID(this));
+        event.data2.f32 = mPosX;
+        netplay::PutEvent(event);
+    }
+
+    if (aTargetPlant != nullptr) {
+        mTargetPlantID = PlantID(mBoard->mPlants.DataArrayGetID(aTargetPlant));
+        mTargetCol = int(aTargetPlant->mSeedType);
+    } else {
+        mTargetPlantID = PlantID::PLANTID_NULL;
+        mTargetCol = int(SeedType::SEED_NONE);
+    }
+    mZombiePhase = ZombiePhase::PHASE_GARGANTUAR_SMASHING;
+    mApp->PlayFoley(FoleyType::FOLEY_LOW_GROAN);
+    PlayZombieReanim("anim_smash", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 20, 16.0f);
 }
 
 void Zombie::UpdateZombieGargantuar() {
@@ -4322,6 +4494,7 @@ void Zombie::UpdateDeath() {
             case ZombieType::ZOMBIE_GARGANTUAR:
             case ZombieType::ZOMBIE_REDEYE_GARGANTUAR:
             case ZombieType::ZOMBIE_GIGA_GARGANTUAR:
+            case ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR:
                 aFallTime = 0.86f;
                 break;
 
@@ -4634,7 +4807,8 @@ bool Zombie::IsGargantuar() const {
 }
 
 bool Zombie::IsGargantuar(ZombieType theZombieType) {
-    return theZombieType == ZombieType::ZOMBIE_GARGANTUAR || theZombieType == ZombieType::ZOMBIE_REDEYE_GARGANTUAR || theZombieType == ZombieType::ZOMBIE_GIGA_GARGANTUAR;
+    return theZombieType == ZombieType::ZOMBIE_GARGANTUAR || theZombieType == ZombieType::ZOMBIE_REDEYE_GARGANTUAR || theZombieType == ZombieType::ZOMBIE_GIGA_GARGANTUAR
+        || theZombieType == ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR;
 }
 
 bool Zombie::IsZombotany(ZombieType theZombieType) {
@@ -5912,6 +6086,7 @@ void Zombie::GetDrawPos(ZombieDrawPosition &theDrawPos) {
         case ZombieType::ZOMBIE_GARGANTUAR:
         case ZombieType::ZOMBIE_REDEYE_GARGANTUAR:
         case ZombieType::ZOMBIE_GIGA_GARGANTUAR:
+        case ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR:
             theDrawPos.mImageOffsetY -= 8.0f;
             break;
         case ZombieType::ZOMBIE_BOBSLED:
@@ -6051,6 +6226,7 @@ void Zombie::DrawIceTrap(Graphics *g, const ZombieDrawPosition &theDrawPos, bool
         case ZombieType::ZOMBIE_GARGANTUAR:
         case ZombieType::ZOMBIE_REDEYE_GARGANTUAR:
         case ZombieType::ZOMBIE_GIGA_GARGANTUAR:
+        case ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR:
             aOffsetX -= 20.0f;
             aOffsetY -= 7.0f;
             aScale = 1.6f;
@@ -6100,6 +6276,7 @@ void Zombie::DrawButter(Graphics *g, const ZombieDrawPosition &theDrawPos) {
         case ZombieType::ZOMBIE_GARGANTUAR:
         case ZombieType::ZOMBIE_REDEYE_GARGANTUAR:
         case ZombieType::ZOMBIE_GIGA_GARGANTUAR:
+        case ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR:
             aOffsetX -= 5.0f;
             aOffsetY -= 15.0f;
             aScale = 1.2f;
@@ -6308,9 +6485,9 @@ void Zombie::DrawReanim(Sexy::Graphics *g, ZombieDrawPosition &theDrawPos, int t
 }
 
 bool Zombie::CanLoseBodyParts() {
-    return mZombieType != ZombieType::ZOMBIE_ZAMBONI && mZombieType != ZombieType::ZOMBIE_BUNGEE && mZombieType != ZombieType::ZOMBIE_CATAPULT && mZombieType != ZombieType::ZOMBIE_GARGANTUAR
-        && mZombieType != ZombieType::ZOMBIE_REDEYE_GARGANTUAR && mZombieType != ZombieType::ZOMBIE_BOSS && mZombieHeight != ZombieHeight::HEIGHT_ZOMBIQUARIUM && !IsFlying()
-        && !IsBobsledTeamWithSled() && !IsZomblob(mZombieType) && mZombieType != ZombieType::ZOMBIE_GIGA_GARGANTUAR && mZombieType != ZombieType::ZOMBIE_DOG;
+    return mZombieType != ZombieType::ZOMBIE_ZAMBONI && mZombieType != ZombieType::ZOMBIE_BUNGEE && mZombieType != ZombieType::ZOMBIE_CATAPULT && !IsGargantuar()
+        && mZombieType != ZombieType::ZOMBIE_BOSS && mZombieHeight != ZombieHeight::HEIGHT_ZOMBIQUARIUM && !IsFlying() && !IsBobsledTeamWithSled() && !IsZomblob(mZombieType)
+        && mZombieType != ZombieType::ZOMBIE_DOG;
 }
 
 void Zombie::SetupReanimForLostHead() {
@@ -8279,7 +8456,8 @@ bool Zombie::ZombieNotWalking() {
         || mZombiePhase == ZombiePhase::PHASE_POLEVAULTER_TAKE || mZombiePhase == ZombiePhase::PHASE_POLEVAULTER_THROW || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_TACKLING
         || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_KICKING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_THROW_PREPARING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_THROW_END
         || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_PREPARING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_ATTACK
-        || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_END || mZombiePhase == ZombiePhase::PHASE_DOGWALKER_ROPE_BREAK || mZombiePhase == ZombiePhase::PHASE_TELEPORTATION_SHOOTING) {
+        || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_END || mZombiePhase == ZombiePhase::PHASE_DOGWALKER_ROPE_BREAK || mZombiePhase == ZombiePhase::PHASE_TELEPORTATION_SHOOTING
+        || mZombiePhase == ZombiePhase::PHASE_SUPER_NOVA_GARGANTUAR_DESTROY) {
         return true;
     }
 

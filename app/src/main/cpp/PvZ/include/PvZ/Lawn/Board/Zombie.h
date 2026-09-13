@@ -400,6 +400,7 @@ public:
     void ExplorerTorchConvert(bool theBurn);
     void UpdateGigaGargantuar();
     void InterruptLightning();
+    void InterruptSuperNovaDestroy();
     void UpdateGigaImp();
     Zombie *GetDogPartner() const;
     void CheckDogPartnerDeath();
@@ -407,6 +408,7 @@ public:
     void UpdateDogWalker();
     void UpdateZombieDog();
     void UpdateZombieTeleportation();
+    void UpdateSuperNovaGargantuar();
     bool FindTeleportationTarget();
     bool IsValidTeleportationTarget();
     Plant *FindDogTarget();

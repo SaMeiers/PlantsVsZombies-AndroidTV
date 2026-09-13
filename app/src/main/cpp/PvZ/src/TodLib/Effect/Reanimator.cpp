@@ -121,6 +121,8 @@ static ReanimationParams gExtendedReanimationParamArray[] = {
     {ReanimationType::REANIM_ZOMBIE_TELEPORTATION, "addonFiles/compiled/reanim/Zombie_teleportation.reanim", 0},
     {ReanimationType::REANIM_TELEPORTATION, "addonFiles/compiled/reanim/teleportation.reanim", 0},
     {ReanimationType::REANIM_TELEPORTATION_BULLET_FLASH, "addonFiles/compiled/reanim/teleportation_bullet_flash.reanim", 0},
+    {ReanimationType::REANIM_SUPER_NOVA_GARGANTUAR, "addonFiles/compiled/reanim/Zombie_super_nova_gargantuar.reanim", 0},
+    {ReanimationType::REANIM_SUPER_NOVA, "addonFiles/compiled/reanim/super_nova.reanim", 0},
     {ReanimationType::REANIM_ICEBERG_LETTUCE, "addonFiles/compiled/reanim/IcebergLettuce.reanim", 0},
     {ReanimationType::REANIM_CELERY_STALKER, "addonFiles/compiled/reanim/CeleryStalker.reanim", 0},
     {ReanimationType::REANIM_SPORE_SHROOM, "addonFiles/compiled/reanim/SporeShroom.reanim", 0},
