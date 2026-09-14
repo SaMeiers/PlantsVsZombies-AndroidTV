@@ -218,7 +218,10 @@ void LawnApp::LoadAddonImages() {
     addonImages.IMAGE_GIGA_ZOMBIEPOLEVAULTERHEAD = GetImageByFileName("addonFiles/particles/ExtendedZombies/ZombieGigaPolevaulterHead");
     addonImages.IMAGE_REANIM_ZOMBIE_EXPLORER_HEAD = GetImageByFileName("addonFiles/particles/ExtendedZombies/ZombieExplorerHead");
     addonImages.IMAGE_REANIM_ZOMBIE_DOGWALKER_HEAD = GetImageByFileName("addonFiles/particles/ExtendedZombies/ZombieDogWalkerHead");
-    addonImages.IMAGE_REANIM_ZOMBIE_TELEPORTATION_HEAD = GetImageByFileName("addonFiles/particles/ExtendedZombies/ZombieTeleportationHead");
+    addonImages.IMAGE_ZOMBIE_TELEPORTATION_HEAD = GetImageByFileName("addonFiles/particles/ExtendedZombies/ZombieTeleportationHead");
+    addonImages.IMAGE_ZOMBIE_CROSSING_GUARD_ARM = GetImageByFileName("addonFiles/particles/ExtendedZombies/ZombieCrossingGuardArm");
+    addonImages.IMAGE_ZOMBIE_CROSSING_GUARD_HEAD = GetImageByFileName("addonFiles/particles/ExtendedZombies/ZombieCrossingGuardHead");
+    addonImages.IMAGE_REANIM_ZOMBIE_CROSSING_GUARD_HAT = GetImageByFileName("addonFiles/reanim/ExtendedZombies/zombie_crossing_guard_hat");
     addonImages.IMAGE_PROJECTILEPOLE = GetImageByFileName("addonFiles/images/ExtendedZombies/Zombie_giga_polevaulter_pole");
     addonImages.IMAGE_PROJECTILEZOMBLOB = GetImageByFileName("addonFiles/images/ExtendedZombies/zombie_zomblob_split");
     addonImages.IMAGE_PROJECTILESPORE = GetImageByFileName("addonFiles/images/ProjectileSpore");
@@ -268,6 +271,7 @@ void LawnApp::LoadAddonImages() {
     addonImages.IMAGE_REANIM_ZOMBIE_DOGWALKER_OUTERARM_UPPER2 = GetImageByFileName("addonFiles/reanim/ExtendedZombies/zombie_dogwalker_outerarm_upper2");
     addonImages.IMAGE_REANIM_ZOMBIE_TELEPORTATION_OUTERARM_UPPER2 = GetImageByFileName("addonFiles/reanim/ExtendedZombies/zombie_teleportation_outerarm_upper2");
     addonImages.IMAGE_REANIM_ZOMBIE_TELEPORTATION_TELEPHONE = GetImageByFileName("addonFiles/reanim/ExtendedZombies/zombie_teleportation_telephone");
+    addonImages.IMAGE_REANIM_ZOMBIE_CROSSING_GUARD_OUTERARM_UPPER2 = GetImageByFileName("addonFiles/reanim/ExtendedZombies/zombie_crossing_guard_outerarm_upper2");
     addonImages.IMAGE_REANIM_CELERY_STALKER_ARM2_LOWER2 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/celery_stalker_arm2_lower2");
     addonImages.IMAGE_REANIM_CELERY_STALKER_ARM2_LOWER3 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/celery_stalker_arm2_lower3");
     addonImages.IMAGE_REANIM_CELERY_STALKER_ARM2_UPPER2 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/celery_stalker_arm2_upper2");

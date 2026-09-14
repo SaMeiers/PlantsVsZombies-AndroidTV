@@ -99,6 +99,7 @@ ZombieDefinition gExtendedZombieDefs[] = {
     {ZOMBIE_DOG, REANIM_DOG, 1, 18, 1, 0, "ZOMBIE_DOG"},
     {ZOMBIE_TELEPORTATION, REANIM_ZOMBIE_TELEPORTATION, 2, 18, 5, 1000, "TELEPORTATION_ZOMBIE"},
     {ZOMBIE_SUPER_NOVA_GARGANTUAR, REANIM_SUPER_NOVA_GARGANTUAR, 10, 48, 15, 1500, "SUPER_NOVA_GARGANTUAR"},
+    {ZOMBIE_CROSSING_GUARD, REANIM_ZOMBIE_CROSSING_GUARD, 4, 36, 10, 1000, "CROSSING_GUARD_ZOMBIE"},
 };
 
 ZombieDefinition &GetZombieDefinition(ZombieType theZombieType) {
@@ -331,6 +332,15 @@ void Zombie::ZombieInitialize(int theRow, ZombieType theType, bool theVariant, Z
             mPhaseCounter = RandRangeInt(1000, 1500);
             break;
 
+        case ZombieType::ZOMBIE_CROSSING_GUARD:
+            mBodyHealth = 270;
+            mHelmType = HelmType::HELMTYPE_CROSSING_GUARD;
+            mHelmHealth = 100;
+            mVariant = false;
+            mZombieAttackRect = Rect(20, 0, 50, 115);
+            mPhaseCounter = 500;
+            break;
+
         case ZombieType::ZOMBIE_GIGA_GARGANTUAR: {
             mWidth = 180;
             mHeight = 180;
@@ -418,9 +428,9 @@ void Zombie::CheckIfPreyCaught() {
         || mZombiePhase == ZombiePhase::PHASE_DOLPHIN_RIDING || mZombiePhase == ZombiePhase::PHASE_DOLPHIN_IN_JUMP || mZombiePhase == ZombiePhase::PHASE_SNORKEL_INTO_POOL
         || mZombiePhase == ZombiePhase::PHASE_SNORKEL_WALKING || mZombiePhase == ZombiePhase::PHASE_LADDER_PLACING || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_CHARGING
         || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_TACKLING || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_KICKING || mZombiePhase == ZombiePhase::PHASE_IMP_POPPING
-        || mZombiePhase == ZombiePhase::PHASE_DOGWALKER_ROPE_BREAK || mZombiePhase == ZombiePhase::PHASE_TELEPORTATION_SHOOTING || mZombieHeight == ZombieHeight::HEIGHT_GETTING_BUNGEE_DROPPED
-        || mZombieHeight == ZombieHeight::HEIGHT_UP_LADDER || mZombieHeight == ZombieHeight::HEIGHT_IN_TO_POOL || mZombieHeight == ZombieHeight::HEIGHT_OUT_OF_POOL || IsTangleKelpTarget()
-        || mZombieHeight == ZombieHeight::HEIGHT_FALLING || !mHasHead || IsFlying()) {
+        || mZombiePhase == ZombiePhase::PHASE_DOGWALKER_ROPE_BREAK || mZombiePhase == ZombiePhase::PHASE_TELEPORTATION_SHOOTING || mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING
+        || mZombieHeight == ZombieHeight::HEIGHT_GETTING_BUNGEE_DROPPED || mZombieHeight == ZombieHeight::HEIGHT_UP_LADDER || mZombieHeight == ZombieHeight::HEIGHT_IN_TO_POOL
+        || mZombieHeight == ZombieHeight::HEIGHT_OUT_OF_POOL || IsTangleKelpTarget() || mZombieHeight == ZombieHeight::HEIGHT_FALLING || !mHasHead || IsFlying()) {
         return;
     }
 
@@ -589,6 +599,9 @@ void Zombie::UpdateActions() {
     if (mZombieType == ZombieType::ZOMBIE_SUPER_NOVA_GARGANTUAR) {
         UpdateSuperNovaGargantuar();
     }
+    if (mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
+        UpdateZombieCrossingGuard();
+    }
 }
 
 void Zombie::UpdateZombieTeleportation() {
@@ -678,6 +691,129 @@ bool Zombie::FindTeleportationTarget() {
     }
 
     return false;
+}
+
+Zombie *Zombie::FindCrossingGuardTarget() {
+    constexpr float CROSSING_GUARD_RANGE = 250.0f;
+    const float aX = mPosX + mWidth * 0.5f;
+    const float aY = mPosY + mHeight * 0.5f;
+
+    Zombie *aBestZombie = nullptr;
+    bool aBestIsSameRow = false;
+    Zombie *aZombie = nullptr;
+    while (mBoard->IterateZombies(aZombie)) {
+        if (aZombie == this || aZombie->IsDeadOrDying() || !aZombie->mHasHead || aZombie->mMindControlled != mMindControlled || aZombie->mHelmType != HelmType::HELMTYPE_NONE
+            || aZombie->mHelmHealth > 0) {
+            continue;
+        }
+
+        Reanimation *aBodyReanim = mApp->ReanimationTryToGet(aZombie->mBodyReanimID);
+        if (aBodyReanim == nullptr || !aBodyReanim->TrackExists("anim_cone")) {
+            continue;
+        }
+
+        const float aTargetX = aZombie->mPosX + float(aZombie->mWidth) * 0.5f;
+        const float aTargetY = aZombie->mPosY + float(aZombie->mHeight) * 0.5f;
+        const float aDistance = Distance2D(aX, aY, aTargetX, aTargetY);
+        if (aDistance > CROSSING_GUARD_RANGE) {
+            continue;
+        }
+
+        const bool aIsSameRow = aZombie->mRow == mRow;
+        if (aBestZombie == nullptr || (aIsSameRow && !aBestIsSameRow) || (aIsSameRow == aBestIsSameRow && aZombie->mPosX < aBestZombie->mPosX)) {
+            aBestZombie = aZombie;
+            aBestIsSameRow = aIsSameRow;
+        }
+    }
+
+    return aBestZombie;
+}
+
+void Zombie::ApplyTrafficCone() {
+    if (IsDeadOrDying() || !mHasHead || mHelmType != HelmType::HELMTYPE_NONE || mHelmHealth > 0) {
+        return;
+    }
+
+    Reanimation *aBodyReanim = mApp->ReanimationTryToGet(mBodyReanimID);
+    if (aBodyReanim == nullptr || !aBodyReanim->TrackExists("anim_cone")) {
+        return;
+    }
+
+    mApp->PlayFoley(FoleyType::FOLEY_PLASTIC_HIT);
+
+    aBodyReanim->SetImageOverride("anim_cone", IMAGE_REANIM_ZOMBIE_CONE1);
+    ReanimShowPrefix("anim_cone", RENDER_GROUP_NORMAL);
+    ReanimShowPrefix("anim_hair", RENDER_GROUP_HIDDEN);
+    mHelmType = HelmType::HELMTYPE_TRAFFIC_CONE;
+    mHelmMaxHealth = mHelmHealth = 370;
+}
+
+void Zombie::LaunchTrafficCone(Zombie *theTarget) {
+    if (theTarget == nullptr) {
+        return;
+    }
+
+    auto aOriginX = int(mPosX);
+    auto aOriginY = int(mPosY - 20.0f);
+    Projectile *aProjectile = mBoard->AddProjectile(aOriginX, aOriginY, mRenderOrder + 1, mRow, ProjectileType::PROJECTILE_TRAFFIC_CONE);
+    aProjectile->mMotionType = ProjectileMotion::MOTION_LOBBED;
+    aProjectile->mTargetZombieID = mBoard->ZombieGetID(theTarget);
+    aProjectile->mCobTargetRow = theTarget->mRow;
+    aProjectile->mLastPortalX = mMindControlled ? 1 : 0;
+    mApp->PlayFoley(FoleyType::FOLEY_THROW);
+}
+
+void Zombie::UpdateZombieCrossingGuard() {
+    Reanimation *aBodyReanim = mApp->ReanimationTryToGet(mBodyReanimID);
+    if (aBodyReanim == nullptr || IsDeadOrDying()) {
+        return;
+    }
+
+    if (!mHasHead) {
+        if (mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING) {
+            mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
+            StartWalkAnim(10);
+        }
+        return;
+    }
+
+    if (mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING) {
+        if (!IsRemoteClientOrViewer() && aBodyReanim->ShouldTriggerTimedEvent(0.8f)) {
+            if (Zombie *aZombie = FindCrossingGuardTarget()) {
+                LaunchTrafficCone(aZombie);
+                if (IsRemoteServer()) {
+                    U16U16_Event event{};
+                    event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_CROSSING_GUARD_FIRE;
+                    event.data1 = uint16_t(mBoard->ZombieGetID(this));
+                    event.data2 = uint16_t(mBoard->ZombieGetID(aZombie));
+                    netplay::PutEvent(event);
+                }
+            }
+        }
+
+        if (aBodyReanim->mLoopCount > 0) {
+            mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
+            mPhaseCounter = 1000;
+            StartWalkAnim(10);
+        }
+        return;
+    }
+
+    if (IsRemoteClientOrViewer()) {
+        return;
+    }
+
+    if (mPhaseCounter <= 0 && !IsImmobilizied() && FindCrossingGuardTarget() != nullptr) {
+        StopEating();
+        mZombiePhase = ZombiePhase::PHASE_CROSSING_GUARD_THROWING;
+        PlayZombieReanim("anim_shooting", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 16.0f);
+        if (IsRemoteServer()) {
+            U16_Event event{};
+            event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_CROSSING_GUARD_THROW;
+            event.data = uint16_t(mBoard->ZombieGetID(this));
+            netplay::PutEvent(event);
+        }
+    }
 }
 
 bool Zombie::IsValidTeleportationTarget() {
@@ -4476,6 +4612,7 @@ void Zombie::UpdateDeath() {
                 break;
 
             case ZombieType::ZOMBIE_DIGGER:
+            case ZombieType::ZOMBIE_CROSSING_GUARD:
                 aFallTime = 0.85f;
                 break;
 
@@ -4671,7 +4808,7 @@ void Zombie::DrawShadow(Graphics *g) {
         } else {
             aShadowOffsetX += 25.0f;
         }
-    } else if (mZombieType == ZombieType::ZOMBIE_DIGGER) {
+    } else if (mZombieType == ZombieType::ZOMBIE_DIGGER || mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
         aShadowOffsetY += 5.0f;
         if (IsWalkingBackwards()) {
             aShadowOffsetX += 14.0f;
@@ -5691,9 +5828,9 @@ void Zombie::MowDown_Original() {
 
     if (mZombiePhase == ZombiePhase::PHASE_ZOMBIE_DYING || mZombiePhase == ZombiePhase::PHASE_POLEVAULTER_IN_VAULT || mZombiePhase == ZombiePhase::PHASE_RISING_FROM_GRAVE
         || mZombiePhase == ZombiePhase::PHASE_DANCER_RISING || mZombiePhase == ZombiePhase::PHASE_SNORKEL_INTO_POOL || mZombiePhase == ZombiePhase::PHASE_ZOMBIE_BURNED || IsGargantuar()
-        || mZombieType == ZombieType::ZOMBIE_BUNGEE || mZombieType == ZombieType::ZOMBIE_DIGGER || mZombieType == ZombieType::ZOMBIE_IMP || mZombieType == ZombieType::ZOMBIE_SUPER_FAN_IMP
-        || mZombieType == ZombieType::ZOMBIE_GIGA_IMP || mZombieType == ZombieType::ZOMBIE_YETI || mZombieType == ZombieType::ZOMBIE_DOLPHIN_RIDER || IsBobsledTeamWithSled() || IsFlying()
-        || mInPool) {
+        || mZombieType == ZombieType::ZOMBIE_BUNGEE || mZombieType == ZombieType::ZOMBIE_DIGGER || mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD || mZombieType == ZombieType::ZOMBIE_IMP
+        || mZombieType == ZombieType::ZOMBIE_SUPER_FAN_IMP || mZombieType == ZombieType::ZOMBIE_GIGA_IMP || mZombieType == ZombieType::ZOMBIE_YETI || mZombieType == ZombieType::ZOMBIE_DOLPHIN_RIDER
+        || IsBobsledTeamWithSled() || IsFlying() || mInPool) {
         Reanimation *aPuffReanim = mApp->AddReanimation(mPosX - 73.0f, mPosY - 56.0f, mRenderOrder + 2, ReanimationType::REANIM_PUFF);
         aPuffReanim->SetFramesForLayer("anim_puff");
         mApp->AddTodParticle(mPosX + 110.0f, mPosY + 0.0f, mRenderOrder + 1, ParticleEffect::PARTICLE_MOWER_CLOUD);
@@ -6237,6 +6374,7 @@ void Zombie::DrawIceTrap(Graphics *g, const ZombieDrawPosition &theDrawPos, bool
             aScale = 1.2f;
             break;
         case ZombieType::ZOMBIE_DIGGER:
+        case ZombieType::ZOMBIE_CROSSING_GUARD:
             aOffsetX -= 27.0f;
             break;
         case ZombieType::ZOMBIE_CATAPULT:
@@ -6613,7 +6751,10 @@ void Zombie::DropHead_Origin(unsigned int theDamageFlags) {
                 aParticle->OverrideImage(nullptr, addonImages.IMAGE_REANIM_ZOMBIE_DOGWALKER_HEAD);
                 BreakRope();
             } else if (mZombieType == ZombieType::ZOMBIE_TELEPORTATION) {
-                aParticle->OverrideImage(nullptr, addonImages.IMAGE_REANIM_ZOMBIE_TELEPORTATION_HEAD);
+                aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIE_TELEPORTATION_HEAD);
+            } else if (mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
+                ReanimShowPrefix("zombie_crossing_guard_hair", RENDER_GROUP_HIDDEN);
+                aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIE_CROSSING_GUARD_HEAD);
             }
         }
         return;
@@ -6808,7 +6949,9 @@ void Zombie::DropHelm(unsigned int theDamageFlags) {
     if (mHelmType == HelmType::HELMTYPE_TRAFFIC_CONE) {
         GetTrackPosition("anim_cone", aPosX, aPosY);
         ReanimShowPrefix("anim_cone", RENDER_GROUP_HIDDEN);
-        ReanimShowPrefix("anim_hair", RENDER_GROUP_NORMAL);
+        if (!IsZombotany(mZombieType)) {
+            ReanimShowPrefix("anim_hair", RENDER_GROUP_NORMAL);
+        }
         aEffect = ParticleEffect::PARTICLE_ZOMBIE_TRAFFIC_CONE;
     } else if (mHelmType == HelmType::HELMTYPE_PAIL) {
         GetTrackPosition("anim_bucket", aPosX, aPosY);
@@ -6831,11 +6974,24 @@ void Zombie::DropHelm(unsigned int theDamageFlags) {
         ReanimShowPrefix("zombie_football_helmet", RENDER_GROUP_HIDDEN);
         ReanimShowPrefix("anim_hair", RENDER_GROUP_NORMAL);
         //        aEffect = ParticleEffect::PARTICLE_ZOMBIE_GIGA_HELMET;
+        aEffect = ParticleEffect::PARTICLE_ZOMBIE_PAIL;
+    } else if (mHelmType == HelmType::HELMTYPE_CROSSING_GUARD) {
+        GetTrackPosition("Zombie_crossing_guard_hardhat", aPosX, aPosY);
+        ReanimShowPrefix("Zombie_crossing_guard_hardhat", RENDER_GROUP_HIDDEN);
+        //        aEffect = ParticleEffect::PARTICLE_ZOMBIE_HELMET;
+        aEffect = ParticleEffect::PARTICLE_ZOMBIE_TRAFFIC_CONE;
     }
 
     if (!TestBit(theDamageFlags, (int)DamageFlags::DAMAGE_DOESNT_LEAVE_BODY) && aEffect != ParticleEffect::PARTICLE_NONE) {
         TodParticleSystem *aParticle = mApp->AddTodParticle(aPosX, aPosY, mRenderOrder + 1, aEffect);
         OverrideParticleScale(aParticle);
+        if (aParticle != nullptr) {
+            if (mHelmType == HelmType::HELMTYPE_GIGA_FOOTBALL) {
+                aParticle->OverrideImage(nullptr, addonImages.IMAGE_REANIM_ZOMBIE_GIGA_FOOTBALL_HELMET3);
+            } else if (mHelmType == HelmType::HELMTYPE_CROSSING_GUARD) {
+                aParticle->OverrideImage(nullptr, addonImages.IMAGE_REANIM_ZOMBIE_CROSSING_GUARD_HAT);
+            }
+        }
     }
 
     mHelmType = HelmType::HELMTYPE_NONE;
@@ -6943,6 +7099,10 @@ void Zombie::SetupReanimForLostArm(unsigned int theDamageFlags) {
             ReanimShowPrefix("zombie_teleportation_outerarm_hand", RENDER_GROUP_HIDDEN);
             ReanimShowPrefix("zombie_teleportation_telephone", RENDER_GROUP_HIDDEN);
             break;
+        case ZombieType::ZOMBIE_CROSSING_GUARD:
+            ReanimShowPrefix("Zombie_crossing_guard_outerarm_lower", RENDER_GROUP_HIDDEN);
+            ReanimShowPrefix("Zombie_crossing_guard_outerarm_hand", RENDER_GROUP_HIDDEN);
+            break;
         default:
             ReanimShowPrefix("Zombie_outerarm_lower", RENDER_GROUP_HIDDEN);
             ReanimShowPrefix("Zombie_outerarm_hand", RENDER_GROUP_HIDDEN);
@@ -7000,6 +7160,10 @@ void Zombie::SetupReanimForLostArm(unsigned int theDamageFlags) {
                 GetTrackPosition("Zombie_teleportation_outerarm_lower", aPosX, aPosY);
                 aBodyReanim->SetImageOverride("Zombie_teleportation_outerarm_upper", addonImages.IMAGE_REANIM_ZOMBIE_TELEPORTATION_OUTERARM_UPPER2);
                 break;
+            case ZombieType::ZOMBIE_CROSSING_GUARD:
+                GetTrackPosition("Zombie_crossing_guard_outerarm_lower", aPosX, aPosY);
+                aBodyReanim->SetImageOverride("Zombie_crossing_guard_outerarm_upper", addonImages.IMAGE_REANIM_ZOMBIE_CROSSING_GUARD_OUTERARM_UPPER2);
+                break;
             default:
                 GetTrackPosition("Zombie_outerarm_lower", aPosX, aPosY);
                 aBodyReanim->SetImageOverride("Zombie_outerarm_upper", IMAGE_REANIM_ZOMBIE_OUTERARM_UPPER2);
@@ -7042,6 +7206,9 @@ void Zombie::SetupReanimForLostArm(unsigned int theDamageFlags) {
                     break;
                 case ZombieType::ZOMBIE_TELEPORTATION:
                     aParticle->OverrideImage(nullptr, addonImages.IMAGE_REANIM_ZOMBIE_TELEPORTATION_TELEPHONE);
+                    break;
+                case ZombieType::ZOMBIE_CROSSING_GUARD:
+                    aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIE_CROSSING_GUARD_ARM);
                     break;
                 case ZombieType::ZOMBIE_SUNDAY_EDITION:
                     aParticle->OverrideImage(nullptr, addonImages.IMAGE_REANIM_ZOMBIE_SUNDAY_EDITION_LEFTARM_LOWER);
@@ -7977,6 +8144,10 @@ void Zombie::SetupLostArmReanim() {
             ReanimShowPrefix("Zombie_teleportation_outerarm_lower", RENDER_GROUP_HIDDEN);
             ReanimShowPrefix("Zombie_teleportation_outerarm_hand", RENDER_GROUP_HIDDEN);
             break;
+        case ZombieType::ZOMBIE_CROSSING_GUARD:
+            ReanimShowPrefix("Zombie_crossing_guard_outerarm_lower", RENDER_GROUP_HIDDEN);
+            ReanimShowPrefix("Zombie_crossing_guard_outerarm_hand", RENDER_GROUP_HIDDEN);
+            break;
         default:
             ReanimShowPrefix("Zombie_outerarm_lower", -1);
             ReanimShowPrefix("Zombie_outerarm_hand", -1);
@@ -8057,6 +8228,9 @@ void Zombie::SetupLostArmReanim() {
             case ZombieType::ZOMBIE_TELEPORTATION:
                 aBodyReanim->SetImageOverride("Zombie_teleportation_outerarm_upper", addonImages.IMAGE_REANIM_ZOMBIE_TELEPORTATION_OUTERARM_UPPER2);
                 break;
+            case ZombieType::ZOMBIE_CROSSING_GUARD:
+                aBodyReanim->SetImageOverride("Zombie_crossing_guard_outerarm_upper", addonImages.IMAGE_REANIM_ZOMBIE_CROSSING_GUARD_OUTERARM_UPPER2);
+                break;
             default:
                 aBodyReanim->SetImageOverride("Zombie_outerarm_upper", Sexy::IMAGE_REANIM_ZOMBIE_OUTERARM_UPPER2);
                 break;
@@ -8133,6 +8307,8 @@ void Zombie::PickRandomSpeed() {
         mVelX = RandRangeFloat(0.89f, 0.91f);
     } else if (mZombiePhase == ZombiePhase::PHASE_FOOTBALL_CHARGING) {
         mVelX = 1.5f;
+    } else if (mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
+        mVelX = 0.12f;
     } else {
         mVelX = RandRangeFloat(0.23f, 0.37f); // 普僵
         if (mVelX < 0.3f) {
@@ -8267,7 +8443,7 @@ void Zombie::ApplyBurn() {
             aCharredPosX -= 6.0f;
             aReanimType = ReanimationType::REANIM_ZOMBIE_CHARRED_IMP;
         }
-        if (mZombieType == ZombieType::ZOMBIE_DIGGER) {
+        if (mZombieType == ZombieType::ZOMBIE_DIGGER || mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
             if (IsWalkingBackwards()) {
                 aCharredPosX += 14.0f;
             }
@@ -8293,7 +8469,7 @@ void Zombie::ApplyBurn() {
         aCharredReanim->mAnimRate *= RandRangeFloat(0.9f, 1.1f);
         if (mZombiePhase == ZombiePhase::PHASE_DIGGER_WALKING_WITHOUT_AXE) {
             aCharredReanim->SetFramesForLayer("anim_crumble_noaxe");
-        } else if (mZombieType == ZombieType::ZOMBIE_DIGGER) {
+        } else if (mZombieType == ZombieType::ZOMBIE_DIGGER || mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
             aCharredReanim->SetFramesForLayer("anim_crumble");
         } else if (IsGargantuar() && !mHasObject) {
             aCharredReanim->SetImageOverride("impblink", IMAGE_BLANK);
@@ -8457,7 +8633,7 @@ bool Zombie::ZombieNotWalking() {
         || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_KICKING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_THROW_PREPARING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_THROW_END
         || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_PREPARING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_ATTACK
         || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_END || mZombiePhase == ZombiePhase::PHASE_DOGWALKER_ROPE_BREAK || mZombiePhase == ZombiePhase::PHASE_TELEPORTATION_SHOOTING
-        || mZombiePhase == ZombiePhase::PHASE_SUPER_NOVA_GARGANTUAR_DESTROY) {
+        || mZombiePhase == ZombiePhase::PHASE_SUPER_NOVA_GARGANTUAR_DESTROY || mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING) {
         return true;
     }
 
@@ -8579,8 +8755,9 @@ void Zombie::UpdateAnimSpeed() {
 
     if (mIsEating) {
         if (mZombieType == ZombieType::ZOMBIE_POLEVAULTER || mZombieType == ZombieType::ZOMBIE_BALLOON || mZombieType == ZombieType::ZOMBIE_IMP || mZombieType == ZombieType::ZOMBIE_DIGGER
-            || mZombieType == ZombieType::ZOMBIE_JACK_IN_THE_BOX || mZombieType == ZombieType::ZOMBIE_SNORKEL || mZombieType == ZombieType::ZOMBIE_YETI
-            || mZombieType == ZombieType::ZOMBIE_SUPER_FAN_IMP || mZombieType == ZombieType::ZOMBIE_GIGA_IMP || mZombieType == ZombieType::ZOMBIE_GIGA_POLEVAULTER || IsZomblob(mZombieType)) {
+            || mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD || mZombieType == ZombieType::ZOMBIE_JACK_IN_THE_BOX || mZombieType == ZombieType::ZOMBIE_SNORKEL
+            || mZombieType == ZombieType::ZOMBIE_YETI || mZombieType == ZombieType::ZOMBIE_SUPER_FAN_IMP || mZombieType == ZombieType::ZOMBIE_GIGA_IMP
+            || mZombieType == ZombieType::ZOMBIE_GIGA_POLEVAULTER || IsZomblob(mZombieType)) {
             ApplyAnimRate(20.0f);
         } else {
             ApplyAnimRate(36.0f);

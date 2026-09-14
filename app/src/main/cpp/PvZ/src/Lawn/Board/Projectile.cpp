@@ -42,6 +42,7 @@ using namespace Sexy;
 
 namespace {
 constexpr int SPIKE_PIERCE_DAMAGE[MAX_PIERCE_HIT_COUNT] = {30, 15, 10};
+constexpr int TRAFFIC_CONE_FLIGHT_TICKS = 60;
 
 bool IsPiercingSpike(const Projectile *theProjectile) {
     return theProjectile->mApp->IsVSMode() && (VSSetupAddonWidget::msBalancePatchMode || Challenge::msVSShuffleMode) && theProjectile->mProjectileType == ProjectileType::PROJECTILE_SPIKE;
@@ -119,11 +120,12 @@ ProjectileDefinition gExtendedProjectileDefinition[] = {
     {ProjectileType::PROJECTILE_SPORE, 0, 50},
     {ProjectileType::PROJECTILE_BOOMERANG, 0, 20},
     {ProjectileType::PROJECTILE_TELEPORTATION, 0, 0},
+    {ProjectileType::PROJECTILE_TRAFFIC_CONE, 0, 0},
 };
 
 void Projectile::ProjectileInitialize(int theX, int theY, int theRenderOrder, int theRow, ProjectileType theProjectileType) {
     if (!isOnlyTouchFireWood && theProjectileType != ProjectileType::PROJECTILE_ZOMBLOB && theProjectileType != ProjectileType::PROJECTILE_BOOMERANG
-        && theProjectileType != ProjectileType::PROJECTILE_TELEPORTATION) {
+        && theProjectileType != ProjectileType::PROJECTILE_TELEPORTATION && theProjectileType != ProjectileType::PROJECTILE_TRAFFIC_CONE) {
         // 僵尸子弹与加农炮子弹NULL
         if (theProjectileType == ProjectileType::PROJECTILE_COBBIG || theProjectileType == ProjectileType::PROJECTILE_ZOMBIE_PEA) {
             old_Projectile_ProjectileInitialize(this, theX, theY, theRenderOrder, theRow, theProjectileType);
@@ -160,6 +162,9 @@ void Projectile::ProjectileInitialize(int theX, int theY, int theRenderOrder, in
         mRotationSpeed = RandRangeFloat(-0.08f, -0.02f);
     } else if (mProjectileType == ProjectileType::PROJECTILE_BOOMERANG) {
         mRotationSpeed = 0.2f;
+    } else if (mProjectileType == ProjectileType::PROJECTILE_TRAFFIC_CONE) {
+        mRotation = RandRangeFloat(0.0f, 2 * std::numbers::pi);
+        mRotationSpeed = RandRangeFloat(0.05f, 0.1f);
     }
 
     mRelatedPlantID = PlantID::PLANTID_NULL;
@@ -516,6 +521,45 @@ void Projectile::UpdateNormalMotion() {
 
 
 void Projectile::UpdateLobMotion() {
+    if (mProjectileType == ProjectileType::PROJECTILE_TRAFFIC_CONE) {
+        Zombie *aZombie = mBoard->ZombieTryToGet(mTargetZombieID);
+        if (aZombie == nullptr || aZombie->IsDeadOrDying() || !aZombie->mHasHead || aZombie->mMindControlled != (mLastPortalX != 0) || aZombie->mHelmType != HelmType::HELMTYPE_NONE
+            || aZombie->mHelmHealth > 0) {
+            Die();
+            return;
+        }
+
+        float aTargetX = aZombie->mPosX + 40.0f;
+        float aTargetY = aZombie->mPosY + 10.0f;
+        aZombie->GetTrackPosition("anim_cone", aTargetX, aTargetY);
+        aTargetX -= 20.0f;
+        aTargetY -= 30.0f;
+
+        const int aTicksRemaining = std::max(1, TRAFFIC_CONE_FLIGHT_TICKS - mProjectileAge + 1);
+        mPosX += (aTargetX - mPosX) / float(aTicksRemaining);
+        mPosY += (aTargetY - mPosY) / float(aTicksRemaining);
+        const float aProgress = std::min(1.0f, float(mProjectileAge) / float(TRAFFIC_CONE_FLIGHT_TICKS));
+        mPosZ = -120.0f * 4.0f * aProgress * (1.0f - aProgress);
+        mShadowY = aZombie->mPosY + 90.0f;
+        if (aProgress >= 0.5f) {
+            mRow = aZombie->mRow;
+        }
+
+        if (mProjectileAge >= TRAFFIC_CONE_FLIGHT_TICKS) {
+            if (!IsRemoteClientOrViewer()) {
+                aZombie->ApplyTrafficCone();
+                if (IsRemoteServer()) {
+                    U16_Event event{};
+                    event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_APPLY_CONE;
+                    event.data = uint16_t(mBoard->ZombieGetID(aZombie));
+                    netplay::PutEvent(event);
+                }
+            }
+            Die();
+        }
+        return;
+    }
+
     if (mProjectileType == ProjectileType::PROJECTILE_ZOMBLOB) {
         float aAccZ = mAccZ;
         if (mApp->mGameMode == GameMode::GAMEMODE_CHALLENGE_HIGH_GRAVITY) {
@@ -777,7 +821,7 @@ void Projectile::PlayImpactSound(Zombie *theZombie) {
             mApp->PlayFoley(FoleyType::FOLEY_SHIELD_HIT);
             aPlaySplatSound = false;
         } else if (theZombie->mHelmType == HELMTYPE_TRAFFIC_CONE || theZombie->mHelmType == HELMTYPE_DIGGER || theZombie->mHelmType == HELMTYPE_FOOTBALL
-                   || theZombie->mHelmType == HELMTYPE_GIGA_FOOTBALL) {
+                   || theZombie->mHelmType == HELMTYPE_GIGA_FOOTBALL || theZombie->mHelmType == HELMTYPE_CROSSING_GUARD) {
             mApp->PlayFoley(FoleyType::FOLEY_PLASTIC_HIT);
         }
     }
@@ -1221,6 +1265,10 @@ GridItem *Projectile::FindCollisionTargetGridItem() {
 }
 
 void Projectile::CheckForCollision() {
+    if (mProjectileType == ProjectileType::PROJECTILE_TRAFFIC_CONE) {
+        return;
+    }
+
     // 史莱姆弹只在 UpdateLobMotion 的落地点生效，不参与普通碰撞。
     if (mProjectileType == ProjectileType::PROJECTILE_ZOMBLOB) {
         return;
@@ -1521,6 +1569,8 @@ void Projectile::Draw(Graphics *g) {
         aImage = addonImages.IMAGE_PROJECTILEBOOMERANG;
     } else if (mProjectileType == ProjectileType::PROJECTILE_TELEPORTATION) {
         aImage = addonImages.IMAGE_PROJECTILETELEPORTATION;
+    } else if (mProjectileType == ProjectileType::PROJECTILE_TRAFFIC_CONE) {
+        aImage = IMAGE_REANIM_ZOMBIE_CONE1;
     }
 
     bool aMirror = false;

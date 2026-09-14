@@ -873,6 +873,8 @@ ZombieType Challenge::IZombieSeedTypeToZombieType(SeedType theSeedType) {
             return ZOMBIE_TELEPORTATION;
         case SEED_ZOMBIE_SUPER_NOVA_GARGANTUAR:
             return ZOMBIE_SUPER_NOVA_GARGANTUAR;
+        case SEED_ZOMBIE_CROSSING_GUARD:
+            return ZOMBIE_CROSSING_GUARD;
         default:
             return ZOMBIE_INVALID;
     }

@@ -409,8 +409,12 @@ public:
     void UpdateZombieDog();
     void UpdateZombieTeleportation();
     void UpdateSuperNovaGargantuar();
+    void UpdateZombieCrossingGuard();
     bool FindTeleportationTarget();
+    Zombie *FindCrossingGuardTarget();
+    void LaunchTrafficCone(Zombie *theTarget);
     bool IsValidTeleportationTarget();
+    void ApplyTrafficCone();
     Plant *FindDogTarget();
     void SetDogPairRow(int theRow);
     void UpdateZombieGargantuar();
