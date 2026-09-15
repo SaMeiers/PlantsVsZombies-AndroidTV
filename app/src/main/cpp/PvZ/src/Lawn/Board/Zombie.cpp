@@ -817,7 +817,7 @@ void Zombie::UpdateZombieCrossingGuard() {
 }
 
 bool Zombie::IsValidTeleportationTarget() {
-    return mHasHead && !IsDeadOrDying() && mZombieType != ZombieType::ZOMBIE_BUNGEE && mZombieType != ZombieType::ZOMBIE_DOG && !IsBobsledTeamWithSled()
+    return mHasHead && !IsDeadOrDying() && mZombieType != ZombieType::ZOMBIE_BUNGEE && mZombieType != ZombieType::ZOMBIE_BOSS && mZombieType != ZombieType::ZOMBIE_DOG && !IsBobsledTeamWithSled()
         && mZombiePhase != ZombiePhase::PHASE_DIGGER_TUNNELING && mZombiePhase != ZombiePhase::PHASE_POLEVAULTER_IN_VAULT && mZombiePhase != ZombiePhase::PHASE_GARGANTUAR_THROWING
         && mZombiePhase != ZombiePhase::PHASE_IMP_GETTING_THROWN && mZombiePhase != ZombiePhase::PHASE_IMP_GETTING_BLOCKED;
 }
