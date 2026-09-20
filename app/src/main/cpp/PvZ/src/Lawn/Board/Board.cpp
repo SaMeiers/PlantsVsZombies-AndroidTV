@@ -3076,17 +3076,24 @@ void Board::processServerEvent(const BaseEvent *event) {
                 Zombie *aZombie = mZombies.DataArrayGet(clientZombieID);
                 aZombie->StopEating();
                 aZombie->mZombiePhase = ZombiePhase::PHASE_CROSSING_GUARD_THROWING;
-                aZombie->PlayZombieReanim("anim_shooting", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 16.0f);
+                aZombie->PlayZombieReanim("anim_throw", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 16.0f);
             }
         } break;
         case EVENT_SERVER_BOARD_ZOMBIE_CROSSING_GUARD_FIRE: {
             auto *eventFire = static_cast<const U16U16_Event *>(event);
             uint16_t clientThrowerID = 0;
-            uint16_t clientTargetID = 0;
-            if (homura::FindInMap(serverZombieIDMap, eventFire->data1, clientThrowerID) && homura::FindInMap(serverZombieIDMap, eventFire->data2, clientTargetID)) {
+            if (homura::FindInMap(serverZombieIDMap, eventFire->data1, clientThrowerID)) {
                 Zombie *aThrower = mZombies.DataArrayGet(clientThrowerID);
-                Zombie *aTarget = mZombies.DataArrayGet(clientTargetID);
-                aThrower->LaunchTrafficCone(aTarget);
+                if (eventFire->data2 == NETPLAY_ZOMBIE_ID_NULL) {
+                    aThrower->mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
+                    aThrower->mPhaseCounter = 1000;
+                    aThrower->StartWalkAnim(10);
+                } else {
+                    uint16_t clientTargetID = 0;
+                    if (homura::FindInMap(serverZombieIDMap, eventFire->data2, clientTargetID)) {
+                        aThrower->LaunchTrafficCone(mZombies.DataArrayGet(clientTargetID));
+                    }
+                }
             }
         } break;
         case EVENT_SERVER_BOARD_ZOMBIE_APPLY_CONE: {

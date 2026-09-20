@@ -1570,6 +1570,8 @@ void Projectile::Draw(Graphics *g) {
     } else if (mProjectileType == ProjectileType::PROJECTILE_TELEPORTATION) {
         aImage = addonImages.IMAGE_PROJECTILETELEPORTATION;
     } else if (mProjectileType == ProjectileType::PROJECTILE_TRAFFIC_CONE) {
+        aScaleX = 0.8f;
+        aScaleY = 0.8f;
         aImage = IMAGE_REANIM_ZOMBIE_CONE1;
     }
 

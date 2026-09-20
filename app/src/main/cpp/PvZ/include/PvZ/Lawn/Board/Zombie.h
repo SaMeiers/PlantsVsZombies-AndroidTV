@@ -412,6 +412,10 @@ public:
     void UpdateZombieCrossingGuard();
     bool FindTeleportationTarget();
     Zombie *FindCrossingGuardTarget();
+    bool IsValidCrossingGuardTarget(Zombie *theTarget, bool theCheckRange);
+    bool IsTrafficConeTargetReserved(Zombie *theTarget);
+    bool BindRealatedZombie(Zombie *theZombie);
+    void UnbindRealatedZombie();
     void LaunchTrafficCone(Zombie *theTarget);
     bool IsValidTeleportationTarget();
     void ApplyTrafficCone();

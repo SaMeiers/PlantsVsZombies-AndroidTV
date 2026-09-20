@@ -693,29 +693,73 @@ bool Zombie::FindTeleportationTarget() {
     return false;
 }
 
-Zombie *Zombie::FindCrossingGuardTarget() {
-    constexpr float CROSSING_GUARD_RANGE = 250.0f;
-    const float aX = mPosX + mWidth * 0.5f;
-    const float aY = mPosY + mHeight * 0.5f;
+bool Zombie::IsValidCrossingGuardTarget(Zombie *theTarget, bool theCheckRange) {
+    if (theTarget == nullptr || theTarget == this || theTarget->IsDeadOrDying() || !theTarget->mHasHead || theTarget->mMindControlled != mMindControlled
+        || theTarget->mHelmType != HelmType::HELMTYPE_NONE || theTarget->mHelmHealth > 0) {
+        return false;
+    }
 
+    Reanimation *aBodyReanim = mApp->ReanimationTryToGet(theTarget->mBodyReanimID);
+    if (aBodyReanim == nullptr || !aBodyReanim->TrackExists("anim_cone")) {
+        return false;
+    }
+
+    if (theCheckRange) {
+        constexpr float CROSSING_GUARD_RANGE = 250.0f;
+        const float aX = mPosX + float(mWidth / 2);
+        const float aY = mPosY + float(mHeight / 2);
+        const float aTargetX = theTarget->mPosX + float(theTarget->mWidth / 2);
+        const float aTargetY = theTarget->mPosY + float(theTarget->mHeight / 2);
+        if (Distance2D(aX, aY, aTargetX, aTargetY) > CROSSING_GUARD_RANGE) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool Zombie::IsTrafficConeTargetReserved(Zombie *theTarget) {
+    if (theTarget == nullptr || theTarget->mRelatedZombieID != ZombieID::ZOMBIEID_NULL) {
+        return true;
+    }
+
+    const ZombieID aTargetID = mBoard->ZombieGetID(theTarget);
+    Projectile *aProjectile = nullptr;
+    while (mBoard->IterateProjectiles(aProjectile)) {
+        if (aProjectile->mProjectileType == ProjectileType::PROJECTILE_TRAFFIC_CONE && aProjectile->mTargetZombieID == aTargetID) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool Zombie::BindRealatedZombie(Zombie *theZombie) {
+    if (theZombie == nullptr || theZombie == this || mRelatedZombieID != ZombieID::ZOMBIEID_NULL || theZombie->mRelatedZombieID != ZombieID::ZOMBIEID_NULL) {
+        return false;
+    }
+
+    mRelatedZombieID = mBoard->ZombieGetID(theZombie);
+    theZombie->mRelatedZombieID = mBoard->ZombieGetID(this);
+    return true;
+}
+
+void Zombie::UnbindRealatedZombie() {
+    const ZombieID aRelatedZombieID = mRelatedZombieID;
+    mRelatedZombieID = ZombieID::ZOMBIEID_NULL;
+
+    Zombie *aRelatedZombie = mBoard->ZombieTryToGet(aRelatedZombieID);
+    if (aRelatedZombie != nullptr && aRelatedZombie->mRelatedZombieID == mBoard->ZombieGetID(this)) {
+        aRelatedZombie->mRelatedZombieID = ZombieID::ZOMBIEID_NULL;
+    }
+}
+
+Zombie *Zombie::FindCrossingGuardTarget() {
     Zombie *aBestZombie = nullptr;
     bool aBestIsSameRow = false;
     Zombie *aZombie = nullptr;
     while (mBoard->IterateZombies(aZombie)) {
-        if (aZombie == this || aZombie->IsDeadOrDying() || !aZombie->mHasHead || aZombie->mMindControlled != mMindControlled || aZombie->mHelmType != HelmType::HELMTYPE_NONE
-            || aZombie->mHelmHealth > 0) {
-            continue;
-        }
-
-        Reanimation *aBodyReanim = mApp->ReanimationTryToGet(aZombie->mBodyReanimID);
-        if (aBodyReanim == nullptr || !aBodyReanim->TrackExists("anim_cone")) {
-            continue;
-        }
-
-        const float aTargetX = aZombie->mPosX + float(aZombie->mWidth) * 0.5f;
-        const float aTargetY = aZombie->mPosY + float(aZombie->mHeight) * 0.5f;
-        const float aDistance = Distance2D(aX, aY, aTargetX, aTargetY);
-        if (aDistance > CROSSING_GUARD_RANGE) {
+        if (!IsValidCrossingGuardTarget(aZombie, true) || IsTrafficConeTargetReserved(aZombie)) {
             continue;
         }
 
@@ -754,7 +798,7 @@ void Zombie::LaunchTrafficCone(Zombie *theTarget) {
     }
 
     auto aOriginX = int(mPosX);
-    auto aOriginY = int(mPosY - 20.0f);
+    auto aOriginY = int(mPosY - 10.0f);
     Projectile *aProjectile = mBoard->AddProjectile(aOriginX, aOriginY, mRenderOrder + 1, mRow, ProjectileType::PROJECTILE_TRAFFIC_CONE);
     aProjectile->mMotionType = ProjectileMotion::MOTION_LOBBED;
     aProjectile->mTargetZombieID = mBoard->ZombieGetID(theTarget);
@@ -771,6 +815,7 @@ void Zombie::UpdateZombieCrossingGuard() {
 
     if (!mHasHead) {
         if (mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING) {
+            UnbindRealatedZombie();
             mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
             StartWalkAnim(10);
         }
@@ -778,8 +823,18 @@ void Zombie::UpdateZombieCrossingGuard() {
     }
 
     if (mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING) {
-        if (!IsRemoteClientOrViewer() && aBodyReanim->ShouldTriggerTimedEvent(0.8f)) {
-            if (Zombie *aZombie = FindCrossingGuardTarget()) {
+        if (!IsRemoteClientOrViewer() && aBodyReanim->ShouldTriggerTimedEvent(0.74f)) {
+            Zombie *aZombie = mBoard->ZombieTryToGet(mRelatedZombieID);
+            const bool aHasValidBinding = IsValidCrossingGuardTarget(aZombie, false) && aZombie->mRelatedZombieID == mBoard->ZombieGetID(this);
+            if (!aHasValidBinding) {
+                UnbindRealatedZombie();
+                aZombie = FindCrossingGuardTarget();
+                if (aZombie != nullptr && !BindRealatedZombie(aZombie)) {
+                    aZombie = nullptr;
+                }
+            }
+
+            if (aZombie != nullptr) {
                 LaunchTrafficCone(aZombie);
                 if (IsRemoteServer()) {
                     U16U16_Event event{};
@@ -788,10 +843,34 @@ void Zombie::UpdateZombieCrossingGuard() {
                     event.data2 = uint16_t(mBoard->ZombieGetID(aZombie));
                     netplay::PutEvent(event);
                 }
+                UnbindRealatedZombie();
+            } else {
+                mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
+                mPhaseCounter = 1000;
+                StartWalkAnim(10);
+                if (IsRemoteServer()) {
+                    U16U16_Event event{};
+                    event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_CROSSING_GUARD_FIRE;
+                    event.data1 = uint16_t(mBoard->ZombieGetID(this));
+                    event.data2 = NETPLAY_ZOMBIE_ID_NULL;
+                    netplay::PutEvent(event);
+                }
+                return;
             }
         }
 
         if (aBodyReanim->mLoopCount > 0) {
+            if (!IsRemoteClientOrViewer()) {
+                const bool aThrowWasCancelled = mRelatedZombieID != ZombieID::ZOMBIEID_NULL;
+                UnbindRealatedZombie();
+                if (aThrowWasCancelled && IsRemoteServer()) {
+                    U16U16_Event event{};
+                    event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_CROSSING_GUARD_FIRE;
+                    event.data1 = uint16_t(mBoard->ZombieGetID(this));
+                    event.data2 = NETPLAY_ZOMBIE_ID_NULL;
+                    netplay::PutEvent(event);
+                }
+            }
             mZombiePhase = ZombiePhase::PHASE_ZOMBIE_NORMAL;
             mPhaseCounter = 1000;
             StartWalkAnim(10);
@@ -803,15 +882,17 @@ void Zombie::UpdateZombieCrossingGuard() {
         return;
     }
 
-    if (mPhaseCounter <= 0 && !IsImmobilizied() && FindCrossingGuardTarget() != nullptr) {
-        StopEating();
-        mZombiePhase = ZombiePhase::PHASE_CROSSING_GUARD_THROWING;
-        PlayZombieReanim("anim_shooting", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 16.0f);
-        if (IsRemoteServer()) {
-            U16_Event event{};
-            event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_CROSSING_GUARD_THROW;
-            event.data = uint16_t(mBoard->ZombieGetID(this));
-            netplay::PutEvent(event);
+    if (mPhaseCounter <= 0 && !IsImmobilizied()) {
+        if (Zombie *aZombie = FindCrossingGuardTarget(); aZombie != nullptr && BindRealatedZombie(aZombie)) {
+            StopEating();
+            mZombiePhase = ZombiePhase::PHASE_CROSSING_GUARD_THROWING;
+            PlayZombieReanim("anim_throw", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 16.0f);
+            if (IsRemoteServer()) {
+                U16_Event event{};
+                event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_CROSSING_GUARD_THROW;
+                event.data = uint16_t(mBoard->ZombieGetID(this));
+                netplay::PutEvent(event);
+            }
         }
     }
 }
@@ -6031,6 +6112,15 @@ void Zombie::DieNoLoot() {
 void Zombie::DieNoLoot_Origin() {
     SettleSunBeanSun();
 
+    if (mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
+        UnbindRealatedZombie();
+    } else {
+        Zombie *aRelatedZombie = mBoard->ZombieTryToGet(mRelatedZombieID);
+        if (aRelatedZombie != nullptr && aRelatedZombie->mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD && aRelatedZombie->mRelatedZombieID == mBoard->ZombieGetID(this)) {
+            aRelatedZombie->UnbindRealatedZombie();
+        }
+    }
+
     if (mZombieType == ZombieType::ZOMBIE_DOGWALKER || mZombieType == ZombieType::ZOMBIE_DOG) {
         Zombie *aPartner = GetDogPartner();
         if (aPartner != nullptr && !aPartner->IsDeadOrDying()) {
@@ -6664,6 +6754,13 @@ void Zombie::DropHead_Origin(unsigned int theDamageFlags) {
         if ((!CanLoseBodyParts() && !aCanDropButteredZomblobHead) || !mHasHead)
             return;
 
+        Zombie *aRelatedZombie = mBoard->ZombieTryToGet(mRelatedZombieID);
+        const bool aCrossingGuardBinding = mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD
+            || (aRelatedZombie != nullptr && aRelatedZombie->mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD && aRelatedZombie->mRelatedZombieID == mBoard->ZombieGetID(this));
+        if (aCrossingGuardBinding) {
+            UnbindRealatedZombie();
+        }
+
         if (mButteredCounter > 0) {
             mButteredCounter = 0;
             UpdateAnimSpeed();
@@ -6737,6 +6834,7 @@ void Zombie::DropHead_Origin(unsigned int theDamageFlags) {
                 aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIEJACKSONHEAD);
             } else if (mZombieType == ZombieType::ZOMBIE_BACKUP_JACKSON) {
                 ReanimShowPrefix("anim_earing", RENDER_GROUP_HIDDEN);
+
                 aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIEBACKUPDANCERHEAD);
             } else if (mZombieType == ZombieType::ZOMBIE_GIGA_POLEVAULTER) {
                 ReanimShowPrefix("anim_glasses", RENDER_GROUP_HIDDEN);
@@ -6753,7 +6851,7 @@ void Zombie::DropHead_Origin(unsigned int theDamageFlags) {
             } else if (mZombieType == ZombieType::ZOMBIE_TELEPORTATION) {
                 aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIE_TELEPORTATION_HEAD);
             } else if (mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
-                ReanimShowPrefix("zombie_crossing_guard_hair", RENDER_GROUP_HIDDEN);
+                ReanimShowPrefix("Zombie_crossing_guard_hair", RENDER_GROUP_HIDDEN);
                 aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIE_CROSSING_GUARD_HEAD);
             }
         }
@@ -6979,7 +7077,7 @@ void Zombie::DropHelm(unsigned int theDamageFlags) {
         GetTrackPosition("Zombie_crossing_guard_hardhat", aPosX, aPosY);
         ReanimShowPrefix("Zombie_crossing_guard_hardhat", RENDER_GROUP_HIDDEN);
         //        aEffect = ParticleEffect::PARTICLE_ZOMBIE_HELMET;
-        aEffect = ParticleEffect::PARTICLE_ZOMBIE_TRAFFIC_CONE;
+        aEffect = ParticleEffect::PARTICLE_ZOMBIE_HEADLIGHT;
     }
 
     if (!TestBit(theDamageFlags, (int)DamageFlags::DAMAGE_DOESNT_LEAVE_BODY) && aEffect != ParticleEffect::PARTICLE_NONE) {
@@ -8507,7 +8605,9 @@ void Zombie::ApplyButter() {
     mButteredCounter = 400;
     if (mZombieType != ZombieType::ZOMBIE_DOGWALKER && mZombieType != ZombieType::ZOMBIE_DOG) {
         Zombie *aZombie = mBoard->ZombieTryToGet(mRelatedZombieID);
-        if (aZombie) {
+        const bool aCrossingGuardBinding = aZombie != nullptr && aZombie->mRelatedZombieID == mBoard->ZombieGetID(this)
+            && (mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD || aZombie->mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD);
+        if (aZombie && !aCrossingGuardBinding) {
             aZombie->mRelatedZombieID = ZombieID::ZOMBIEID_NULL;
             mRelatedZombieID = ZombieID::ZOMBIEID_NULL;
         }

@@ -1299,7 +1299,7 @@ enum SeedChooserState {
     CHOOSE_NORMAL = 0,
     CHOOSE_VIEW_LAWN = 1,
 };
-enum SeedType { // 直接从WP复制过来的，怀疑其中有错误，因为TV有重型武器关卡，多了三个种子
+enum SeedType {
     SEED_PEASHOOTER = 0,
     SEED_SUNFLOWER = 1,
     SEED_CHERRYBOMB = 2,
@@ -1404,11 +1404,11 @@ enum SeedType { // 直接从WP复制过来的，怀疑其中有错误，因为TV
     SEED_ZOMBIE_GIGA_GARGANTUAR,
     SEED_ZOMBIE_DOGWALKER,
     SEED_ZOMBIE_TELEPORTATION,
-    SEED_ZOMBIE_SUPER_NOVA_GARGANTUAR,
     SEED_ZOMBIE_CROSSING_GUARD,
     // extended end
     NUM_ZOMBIE_SEEDS_IN_CHOOSER,
     // extended begin
+    SEED_ZOMBIE_SUPER_NOVA_GARGANTUAR,
     SEED_ZOMBIE_WALLNUT_HEAD,
     SEED_ZOMBIE_BOSS,
     SEED_ZOMBIE_REDEYE_GARGANTUAR,
