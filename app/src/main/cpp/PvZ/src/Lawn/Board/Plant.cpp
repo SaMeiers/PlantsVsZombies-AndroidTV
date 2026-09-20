@@ -113,6 +113,7 @@ PlantDefinition gExtendedPlantDefs[]{
     {SeedType::SEED_CHILLY_PEPPER, nullptr, ReanimationType::REANIM_CHILLY_PEPPER, 0, 100, 5000, PlantSubClass::SUBCLASS_NORMAL, 0, "CHILLY_PEPPER"},
     {SeedType::SEED_SUN_BEAN, nullptr, ReanimationType::REANIM_SUN_BEAN, 0, 50, 3000, PlantSubClass::SUBCLASS_NORMAL, 0, "SUN_BEAN"},
     {SeedType::SEED_PEANUT, nullptr, ReanimationType::REANIM_PEANUT, 0, 150, 3000, PlantSubClass::SUBCLASS_SHOOTER, 200, "PEANUT"},
+    {SeedType::SEED_ENDURIAN, nullptr, ReanimationType::REANIM_ENDURIAN, 0, 75, 3000, PlantSubClass::SUBCLASS_NORMAL, 0, "ENDURIAN"},
     {SeedType::SEED_IMP_PEAR, nullptr, ReanimationType::REANIM_IMP_PEAR, 0, 100, 3000, PlantSubClass::SUBCLASS_NORMAL, 0, "IMP_PEAR"},
 };
 
@@ -148,6 +149,9 @@ void Plant::PlantInitialize(int theGridX, int theGridY, SeedType theSeedType, Se
             break;
         case SeedType::SEED_PEANUT:
             mPlantMaxHealth = 4000;
+            break;
+        case SeedType::SEED_ENDURIAN:
+            mPlantMaxHealth = 3000;
             break;
         default:
             break;
@@ -226,6 +230,7 @@ int Plant::GetDamageRangeFlags(PlantWeapon thePlantWeapon) const {
         case SeedType::SEED_ICEBERG_LETTUCE:
         case SeedType::SEED_BONK_CHOY:
         case SeedType::SEED_CELERY_STALKER:
+        case SeedType::SEED_ENDURIAN:
             return 9; // DAMANGES_GROUND | DAMAGES_DOG
         case SeedType::SEED_CATTAIL:
             return 11;
@@ -384,6 +389,8 @@ void Plant::Animate() {
         AnimateSweetPotato();
     } else if (mSeedType == SeedType::SEED_PEANUT) {
         AnimatePeanut();
+    } else if (mSeedType == SeedType::SEED_ENDURIAN) {
+        AnimateEndurian();
     }
 
     UpdateBlink();
@@ -468,6 +475,26 @@ void Plant::AnimatePeanut() {
     }
 }
 
+void Plant::AnimateEndurian() {
+    Reanimation *aBodyReanim = mApp->ReanimationTryToGet(mBodyReanimID);
+    Image *aImageOverride = aBodyReanim->GetImageOverride("Endurian_body");
+    if (mPlantHealth < mPlantMaxHealth / 3) {
+        if (aImageOverride != addonImages.IMAGE_REANIM_ENDURIAN_BODY3) {
+            aBodyReanim->SetImageOverride("Endurian_body", addonImages.IMAGE_REANIM_ENDURIAN_BODY3);
+            aBodyReanim->SetImageOverride("Endurian_stem", addonImages.IMAGE_REANIM_ENDURIAN_STEM2);
+            aBodyReanim->SetImageOverride("Endurian_eye", addonImages.IMAGE_REANIM_ENDURIAN_EYE2);
+            aBodyReanim->AssignRenderGroupToPrefix("Endurian_eyeball2", RENDER_GROUP_HIDDEN);
+        }
+    } else if (mPlantHealth < mPlantMaxHealth * 2 / 3) {
+        if (aImageOverride != addonImages.IMAGE_REANIM_ENDURIAN_BODY2) {
+            aBodyReanim->SetImageOverride("Endurian_body", addonImages.IMAGE_REANIM_ENDURIAN_BODY2);
+        }
+    } else {
+        aBodyReanim->SetImageOverride("Endurian_body", nullptr);
+        aBodyReanim->SetImageOverride("Endurian_stem", nullptr);
+    }
+}
+
 void Plant::Update() {
     // 用于修复植物受击闪光、生产发光、铲子下方植物发光，同时实现技能无冷却
 
@@ -541,6 +568,70 @@ void Plant::UpdateAbilities() {
         UpdateBonkChoy();
     } else if (mSeedType == SeedType::SEED_SWEET_POTATO) {
         UpdateSweetPotato();
+    } else if (mSeedType == SeedType::SEED_ENDURIAN) {
+        UpdateEndurian();
+    }
+}
+
+void Plant::UpdateEndurian() {
+    static constexpr int kEndurianDamage = 20;
+    static constexpr int kEndurianDamageInterval = 100;
+
+    const Rect anAttackRect = GetPlantRect();
+    const int aDamageRangeFlags = GetDamageRangeFlags(PlantWeapon::WEAPON_PRIMARY);
+    auto IsZombieInRange = [&](Zombie *theZombie) {
+        return !theZombie->IsDeadOrDying() && theZombie->IsOnBoard() && theZombie->EffectedByDamage(aDamageRangeFlags) && GetRectOverlap(anAttackRect, theZombie->GetZombieRect()) > 0;
+    };
+
+    bool aZombieIsInRange = false;
+    Zombie *aZombie = nullptr;
+    while (mBoard->IterateZombies(aZombie)) {
+        if (IsZombieInRange(aZombie)) {
+            aZombieIsInRange = true;
+            break;
+        }
+    }
+
+    Reanimation *aBodyReanim = mApp->ReanimationTryToGet(mBodyReanimID);
+    if (!aZombieIsInRange) {
+        mStateCountdown = 0;
+        if (mState == PlantState::STATE_ENDURIAN_STARTING || mState == PlantState::STATE_ENDURIAN_ATTACKING) {
+            PlayBodyReanim("anim_stop", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 18.0f);
+            mState = PlantState::STATE_ENDURIAN_STOPPING;
+        } else if (mState == PlantState::STATE_ENDURIAN_STOPPING && aBodyReanim != nullptr && aBodyReanim->mLoopCount > 0) {
+            PlayIdleAnim(aBodyReanim->mDefinition->mFPS);
+            mState = PlantState::STATE_READY;
+        }
+        return;
+    }
+
+    if (mState != PlantState::STATE_ENDURIAN_STARTING && mState != PlantState::STATE_ENDURIAN_ATTACKING) {
+        PlayBodyReanim("anim_start", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 18.0f);
+        mState = PlantState::STATE_ENDURIAN_STARTING;
+        return;
+    }
+    if (mState == PlantState::STATE_ENDURIAN_STARTING) {
+        if (aBodyReanim == nullptr || aBodyReanim->mLoopCount == 0) {
+            return;
+        }
+        mState = PlantState::STATE_ENDURIAN_ATTACKING;
+    } else if (mStateCountdown > 0) {
+        return;
+    }
+
+    PlayBodyReanim("anim_attack", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 0, 18.0f);
+    mStateCountdown = kEndurianDamageInterval;
+
+    bool aZombieWasDamaged = false;
+    aZombie = nullptr;
+    while (mBoard->IterateZombies(aZombie)) {
+        if (IsZombieInRange(aZombie)) {
+            aZombie->TakeDamage(kEndurianDamage, 0U);
+            aZombieWasDamaged = true;
+        }
+    }
+    if (aZombieWasDamaged) {
+        mApp->PlayFoley(FoleyType::FOLEY_SPLAT);
     }
 }
 
@@ -2600,7 +2691,7 @@ bool Plant::IsUpgrade(SeedType theSeedType) {
 
 bool Plant::IsDefender(SeedType theSeedType) {
     return theSeedType == SeedType::SEED_WALLNUT || theSeedType == SeedType::SEED_TALLNUT || theSeedType == SeedType::SEED_PUMPKINSHELL || theSeedType == SeedType::SEED_SWEET_POTATO
-        || theSeedType == SeedType::SEED_PEANUT;
+        || theSeedType == SeedType::SEED_PEANUT || theSeedType == SeedType::SEED_ENDURIAN;
 }
 
 Rect Plant::GetPlantRect() {

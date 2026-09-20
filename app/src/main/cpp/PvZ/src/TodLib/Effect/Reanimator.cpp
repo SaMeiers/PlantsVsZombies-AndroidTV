@@ -135,6 +135,7 @@ static ReanimationParams gExtendedReanimationParamArray[] = {
     {ReanimationType::REANIM_CHILOOSH, "addonFiles/compiled/reanim/chiloosh.reanim", 0},
     {ReanimationType::REANIM_SUN_BEAN, "addonFiles/compiled/reanim/SunBean.reanim", 0},
     {ReanimationType::REANIM_PEANUT, "addonFiles/compiled/reanim/Peanut.reanim", 0},
+    {ReanimationType::REANIM_ENDURIAN, "addonFiles/compiled/reanim/Endurian.reanim", 0},
     {ReanimationType::REANIM_IMP_PEAR, "addonFiles/compiled/reanim/ImpPear.reanim", 0},
     {ReanimationType::REANIM_APPLE_CLOCK, "addonFiles/compiled/reanim/apple_clock.reanim", 0},
 };

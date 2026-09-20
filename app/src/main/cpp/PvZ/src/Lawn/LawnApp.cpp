@@ -283,6 +283,10 @@ void LawnApp::LoadAddonImages() {
     addonImages.IMAGE_REANIM_SWEET_POTATO_EYE3 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/sweet_potato_eye3");
     addonImages.IMAGE_REANIM_PEANUT_HEAD1_2 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/peanut_head1_2");
     addonImages.IMAGE_REANIM_PEANUT_HEAD2_2 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/peanut_head2_2");
+    addonImages.IMAGE_REANIM_ENDURIAN_BODY2 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/endurian_body2");
+    addonImages.IMAGE_REANIM_ENDURIAN_BODY3 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/endurian_body3");
+    addonImages.IMAGE_REANIM_ENDURIAN_EYE2 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/endurian_eye2");
+    addonImages.IMAGE_REANIM_ENDURIAN_STEM2 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/endurian_stem2");
     addonImages.IMAGE_REANIM_ICE1 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/ice1");
     addonImages.IMAGE_REANIM_ICE2 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/ice2");
     addonImages.IMAGE_REANIM_ICE3 = GetImageByFileName("addonFiles/reanim/ExtendedPlants/ice3");
