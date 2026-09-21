@@ -577,23 +577,10 @@ void Plant::UpdateEndurian() {
     static constexpr int kEndurianDamage = 20;
     static constexpr int kEndurianDamageInterval = 100;
 
-    const Rect anAttackRect = GetPlantRect();
-    const int aDamageRangeFlags = GetDamageRangeFlags(PlantWeapon::WEAPON_PRIMARY);
-    auto IsZombieInRange = [&](Zombie *theZombie) {
-        return !theZombie->IsDeadOrDying() && theZombie->IsOnBoard() && theZombie->EffectedByDamage(aDamageRangeFlags) && GetRectOverlap(anAttackRect, theZombie->GetZombieRect()) > 0;
-    };
-
-    bool aZombieIsInRange = false;
-    Zombie *aZombie = nullptr;
-    while (mBoard->IterateZombies(aZombie)) {
-        if (IsZombieInRange(aZombie)) {
-            aZombieIsInRange = true;
-            break;
-        }
-    }
+    Zombie *aZombie = mBoard->GetLadderAt(mPlantCol, mRow) == nullptr ? FindTargetZombie(mRow, PlantWeapon::WEAPON_PRIMARY) : nullptr;
 
     Reanimation *aBodyReanim = mApp->ReanimationTryToGet(mBodyReanimID);
-    if (!aZombieIsInRange) {
+    if (aZombie == nullptr) {
         mStateCountdown = 0;
         if (mState == PlantState::STATE_ENDURIAN_STARTING || mState == PlantState::STATE_ENDURIAN_ATTACKING) {
             PlayBodyReanim("anim_stop", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 18.0f);
@@ -622,17 +609,7 @@ void Plant::UpdateEndurian() {
     PlayBodyReanim("anim_attack", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 0, 18.0f);
     mStateCountdown = kEndurianDamageInterval;
 
-    bool aZombieWasDamaged = false;
-    aZombie = nullptr;
-    while (mBoard->IterateZombies(aZombie)) {
-        if (IsZombieInRange(aZombie)) {
-            aZombie->TakeDamage(kEndurianDamage, 0U);
-            aZombieWasDamaged = true;
-        }
-    }
-    if (aZombieWasDamaged) {
-        mApp->PlayFoley(FoleyType::FOLEY_SPLAT);
-    }
+    DoRowAreaDamage(kEndurianDamage, 0U);
 }
 
 bool Plant::HasActiveBoomerang() {
@@ -1463,8 +1440,9 @@ void Plant::DoRowAreaDamage(int theDamage, unsigned int theDamageFlags) {
         }
 
         if (aZombie->mOnHighGround == IsOnHighGround() && aZombie->EffectedByDamage(aDamageRangeFlags)) {
+            int aExtraRange = mSeedType == SeedType::SEED_ENDURIAN && aZombie->mZombieType == ZombieType::ZOMBIE_LADDER ? 20 : 0;
             Rect aZombieRect = aZombie->GetZombieRect();
-            if (GetRectOverlap(aAttackRect, aZombieRect) > 0) {
+            if (GetRectOverlap(aAttackRect, aZombieRect) > -aExtraRange) {
                 int aDamage = theDamage;
                 if ((aZombie->mZombieType == ZombieType::ZOMBIE_ZAMBONI || aZombie->mZombieType == ZombieType::ZOMBIE_CATAPULT) && TestBit(theDamageFlags, DamageFlags::DAMAGE_SPIKE)) {
                     aDamage = 1800;
@@ -1902,7 +1880,7 @@ Zombie *Plant::FindTargetZombie(int theRow, PlantWeapon thePlantWeapon) {
 
         if (!aZombie->mHasHead || aZombie->IsTangleKelpTarget()) {
             if (mSeedType == SeedType::SEED_POTATOMINE || mSeedType == SeedType::SEED_CHOMPER || mSeedType == SeedType::SEED_TANGLEKELP || mSeedType == SeedType::SEED_ICEBERG_LETTUCE
-                || mSeedType == SeedType::SEED_CELERY_STALKER || mSeedType == SeedType::SEED_BONK_CHOY) {
+                || mSeedType == SeedType::SEED_CELERY_STALKER || mSeedType == SeedType::SEED_BONK_CHOY || mSeedType == SeedType::SEED_ENDURIAN) {
                 continue;
             }
         }
@@ -1987,6 +1965,12 @@ Zombie *Plant::FindTargetZombie(int theRow, PlantWeapon thePlantWeapon) {
                 }
                 if (aZombie->mZombieType == ZombieType::ZOMBIE_BUNGEE && aZombie->mTargetCol != mPlantCol - 1) {
                     continue; // 只能攻击左侧一格的蹦极僵尸
+                }
+            }
+
+            if (mSeedType == SeedType::SEED_ENDURIAN) {
+                if (aZombie->mZombieType == ZombieType::ZOMBIE_LADDER) {
+                    aExtraRange = 20;
                 }
             }
 
@@ -2764,6 +2748,11 @@ Rect Plant::GetPlantAttackRect(PlantWeapon thePlantWeapon) {
             case SeedType::SEED_BONK_CHOY:
                 aRect = Rect(mX - 95, mY, 270, mHeight);
                 break;
+            case SeedType::SEED_ENDURIAN: {
+                Plant *aPumpkin = mBoard->GetPumpkinAt(mPlantCol, mRow);
+                aRect = aPumpkin != nullptr ? aPumpkin->GetPlantRect() : GetPlantRect();
+                break;
+            }
             default:
                 aRect = Rect(mX + 60, mY, BOARD_WIDTH, mHeight);
                 break;

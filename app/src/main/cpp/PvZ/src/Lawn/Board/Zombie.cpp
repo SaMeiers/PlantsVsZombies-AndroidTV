@@ -7730,7 +7730,7 @@ bool Zombie::CanTargetPlant(Plant *thePlant, ZombieAttackType theAttackType) {
     if (mZombiePhase == ZombiePhase::PHASE_LADDER_CARRYING || mZombiePhase == ZombiePhase::PHASE_LADDER_PLACING) {
         bool aPlaceLadder = false;
         if (thePlant->mSeedType == SeedType::SEED_WALLNUT || thePlant->mSeedType == SeedType::SEED_TALLNUT || thePlant->mSeedType == SeedType::SEED_PUMPKINSHELL
-            || thePlant->mSeedType == SeedType::SEED_SWEET_POTATO) {
+            || thePlant->mSeedType == SeedType::SEED_SWEET_POTATO || thePlant->mSeedType == SeedType::SEED_ENDURIAN) {
             aPlaceLadder = true;
         }
 
