@@ -997,12 +997,12 @@ void Zombie::ApplyScientistSpray() {
         Plant *aPlant = nullptr;
         while (mBoard->IteratePlants(aPlant)) {
             const Rect aPlantRect = aPlant->GetPlantRect();
-            if (!IsInScientistTargetRange(aPlantRect, SCIENTIST_TARGET_RANGE_INSET) || !CanTargetPlant(aPlant, ZombieAttackType::ATTACKTYPE_CHEW)) {
+            if (!IsInScientistTargetRange(aPlantRect, SCIENTIST_TARGET_RANGE_INSET) || !CanTargetPlant(aPlant, ZombieAttackType::ATTACKTYPE_CHEW) || aPlant->IsInvulnerable()) {
                 continue;
             }
 
             aPlant->mPlantHealth -= SCIENTIST_DAMAGE_PER_PULSE;
-            aPlant->mRecentlyEatenCountdown = 100;
+            aPlant->mEatenFlashCountdown = std::max(aPlant->mEatenFlashCountdown, 50);
             if (aPlant->mPlantHealth <= 0) {
                 aPlant->Die();
             }
