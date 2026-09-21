@@ -875,6 +875,8 @@ ZombieType Challenge::IZombieSeedTypeToZombieType(SeedType theSeedType) {
             return ZOMBIE_SUPER_NOVA_GARGANTUAR;
         case SEED_ZOMBIE_CROSSING_GUARD:
             return ZOMBIE_CROSSING_GUARD;
+        case SEED_ZOMBIE_SCIENTIST:
+            return ZOMBIE_SCIENTIST;
         default:
             return ZOMBIE_INVALID;
     }

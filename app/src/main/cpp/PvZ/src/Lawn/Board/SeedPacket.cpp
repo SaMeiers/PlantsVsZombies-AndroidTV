@@ -510,6 +510,7 @@ void DrawSeedPacket(Sexy::Graphics *g,
         case SeedType::SEED_ZOMBIE_EXPLORER:
         case SeedType::SEED_ZOMBIE_DOGWALKER:
         case SeedType::SEED_ZOMBIE_TELEPORTATION:
+        case SeedType::SEED_ZOMBIE_SCIENTIST:
             offsetY = -7.0f;
             offsetX = 3.0f;
             theDrawScale = 0.35f;

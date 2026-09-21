@@ -410,6 +410,12 @@ public:
     void UpdateZombieTeleportation();
     void UpdateSuperNovaGargantuar();
     void UpdateZombieCrossingGuard();
+    void UpdateZombieScientist();
+    bool IsInScientistTargetRange(const Sexy::Rect &theTargetRect, int theRangeInset);
+    bool HasScientistTriggerTarget();
+    void ApplyScientistSpray();
+    bool ApplyScientistHealing();
+    void SetScientistPhase(ZombiePhase thePhase);
     bool FindTeleportationTarget();
     Zombie *FindCrossingGuardTarget();
     bool IsValidCrossingGuardTarget(Zombie *theTarget, bool theCheckRange);

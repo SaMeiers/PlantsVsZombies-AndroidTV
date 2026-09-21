@@ -3103,6 +3103,20 @@ void Board::processServerEvent(const BaseEvent *event) {
                 mZombies.DataArrayGet(clientZombieID)->ApplyTrafficCone();
             }
         } break;
+        case EVENT_SERVER_BOARD_ZOMBIE_SCIENTIST_STATE: {
+            auto *stateEvent = static_cast<const U16U16_Event *>(event);
+            uint16_t clientZombieID = 0;
+            if (homura::FindInMap(serverZombieIDMap, stateEvent->data1, clientZombieID)) {
+                mZombies.DataArrayGet(clientZombieID)->SetScientistPhase(ZombiePhase(stateEvent->data2));
+            }
+        } break;
+        case EVENT_SERVER_BOARD_ZOMBIE_SCIENTIST_HEAL: {
+            auto *healEvent = static_cast<const U16_Event *>(event);
+            uint16_t clientZombieID = 0;
+            if (homura::FindInMap(serverZombieIDMap, healEvent->data, clientZombieID)) {
+                mZombies.DataArrayGet(clientZombieID)->ApplyScientistHealing();
+            }
+        } break;
         case EVENT_SERVER_BOARD_ZOMBIE_PHASE_COUNTER: {
             auto *eventZombiePhaseCounter = static_cast<const U8U8U16U16_Event *>(event);
             uint8_t serverZombiePhase = eventZombiePhaseCounter->data1;

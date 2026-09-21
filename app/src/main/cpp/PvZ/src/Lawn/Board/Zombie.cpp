@@ -100,6 +100,7 @@ ZombieDefinition gExtendedZombieDefs[] = {
     {ZOMBIE_TELEPORTATION, REANIM_ZOMBIE_TELEPORTATION, 2, 18, 5, 1000, "TELEPORTATION_ZOMBIE"},
     {ZOMBIE_SUPER_NOVA_GARGANTUAR, REANIM_SUPER_NOVA_GARGANTUAR, 10, 48, 15, 1500, "SUPER_NOVA_GARGANTUAR"},
     {ZOMBIE_CROSSING_GUARD, REANIM_ZOMBIE_CROSSING_GUARD, 4, 36, 10, 1000, "CROSSING_GUARD_ZOMBIE"},
+    {ZOMBIE_SCIENTIST, REANIM_ZOMBIE_SCIENTIST, 2, 33, 10, 2000, "SCIENTIST_ZOMBIE"},
 };
 
 ZombieDefinition &GetZombieDefinition(ZombieType theZombieType) {
@@ -341,6 +342,12 @@ void Zombie::ZombieInitialize(int theRow, ZombieType theType, bool theVariant, Z
             mPhaseCounter = 500;
             break;
 
+        case ZombieType::ZOMBIE_SCIENTIST:
+            mBodyHealth = 500;
+            mVariant = false;
+            mZombieAttackRect = Rect(-110, -80, 160, 300);
+            break;
+
         case ZombieType::ZOMBIE_GIGA_GARGANTUAR: {
             mWidth = 180;
             mHeight = 180;
@@ -429,8 +436,9 @@ void Zombie::CheckIfPreyCaught() {
         || mZombiePhase == ZombiePhase::PHASE_SNORKEL_WALKING || mZombiePhase == ZombiePhase::PHASE_LADDER_PLACING || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_CHARGING
         || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_TACKLING || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_KICKING || mZombiePhase == ZombiePhase::PHASE_IMP_POPPING
         || mZombiePhase == ZombiePhase::PHASE_DOGWALKER_ROPE_BREAK || mZombiePhase == ZombiePhase::PHASE_TELEPORTATION_SHOOTING || mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING
-        || mZombieHeight == ZombieHeight::HEIGHT_GETTING_BUNGEE_DROPPED || mZombieHeight == ZombieHeight::HEIGHT_UP_LADDER || mZombieHeight == ZombieHeight::HEIGHT_IN_TO_POOL
-        || mZombieHeight == ZombieHeight::HEIGHT_OUT_OF_POOL || IsTangleKelpTarget() || mZombieHeight == ZombieHeight::HEIGHT_FALLING || !mHasHead || IsFlying()) {
+        || mZombieType == ZombieType::ZOMBIE_SCIENTIST || mZombieHeight == ZombieHeight::HEIGHT_GETTING_BUNGEE_DROPPED || mZombieHeight == ZombieHeight::HEIGHT_UP_LADDER
+        || mZombieHeight == ZombieHeight::HEIGHT_IN_TO_POOL || mZombieHeight == ZombieHeight::HEIGHT_OUT_OF_POOL || IsTangleKelpTarget() || mZombieHeight == ZombieHeight::HEIGHT_FALLING || !mHasHead
+        || IsFlying()) {
         return;
     }
 
@@ -601,6 +609,9 @@ void Zombie::UpdateActions() {
     }
     if (mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
         UpdateZombieCrossingGuard();
+    }
+    if (mZombieType == ZombieType::ZOMBIE_SCIENTIST) {
+        UpdateZombieScientist();
     }
 }
 
@@ -894,6 +905,211 @@ void Zombie::UpdateZombieCrossingGuard() {
                 netplay::PutEvent(event);
             }
         }
+    }
+}
+
+bool Zombie::IsInScientistTargetRange(const Rect &theTargetRect, int theRangeInset) {
+    Rect aTargetRange = GetZombieAttackRect();
+    aTargetRange.mWidth -= theRangeInset;
+    if (!IsWalkingBackwards()) {
+        aTargetRange.mX += theRangeInset;
+    }
+    return aTargetRange.Intersects(theTargetRect);
+}
+
+bool Zombie::HasScientistTriggerTarget() {
+    constexpr int SCIENTIST_TARGET_RANGE_INSET = 20;
+    constexpr int SCIENTIST_FRIEND_RANGE_INSET = 40;
+
+    if (!mMindControlled) {
+        Plant *aPlant = nullptr;
+        while (mBoard->IteratePlants(aPlant)) {
+            const Rect aPlantRect = aPlant->GetPlantRect();
+            if (IsInScientistTargetRange(aPlantRect, SCIENTIST_TARGET_RANGE_INSET) && CanTargetPlant(aPlant, ZombieAttackType::ATTACKTYPE_CHEW)) {
+                return true;
+            }
+        }
+    }
+
+    Zombie *aZombie = nullptr;
+    while (mBoard->IterateZombies(aZombie)) {
+        if (aZombie == this || aZombie->IsDeadOrDying() || !mHasHead || !aZombie->IsOnBoard()) {
+            continue;
+        }
+
+        const Rect aZombieRect = aZombie->GetZombieRect();
+        const bool aIsFriendly = aZombie->mMindControlled == mMindControlled;
+        const int aRangeInset = aIsFriendly ? SCIENTIST_FRIEND_RANGE_INSET : SCIENTIST_TARGET_RANGE_INSET;
+        if (!IsInScientistTargetRange(aZombieRect, aRangeInset)) {
+            continue;
+        }
+
+        if (!aIsFriendly) {
+            return true;
+        }
+
+        const bool aHelmNeedsHealing = aZombie->mHelmType != HelmType::HELMTYPE_NONE && aZombie->mHelmMaxHealth > 0 && aZombie->mHelmHealth * 3 <= aZombie->mHelmMaxHealth * 2;
+        const bool aShieldNeedsHealing = aZombie->mShieldType != ShieldType::SHIELDTYPE_NONE && aZombie->mShieldMaxHealth > 0 && aZombie->mShieldHealth * 3 <= aZombie->mShieldMaxHealth * 2;
+        const bool aBodyNeedsHealing = aZombie->mBodyMaxHealth > 0 && aZombie->mBodyHealth * 3 <= aZombie->mBodyMaxHealth * 2;
+        if (aHelmNeedsHealing || aShieldNeedsHealing || aBodyNeedsHealing) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool Zombie::ApplyScientistHealing() {
+    constexpr int SCIENTIST_HEAL_PER_PULSE = 20;
+    if (IsDeadOrDying()) {
+        return false;
+    }
+
+    bool aHealed = false;
+    if (mHelmType != HelmType::HELMTYPE_NONE && mHelmHealth < mHelmMaxHealth) {
+        mHelmHealth = std::min(mHelmMaxHealth, mHelmHealth + SCIENTIST_HEAL_PER_PULSE);
+        aHealed = true;
+    } else {
+        if (mShieldType != ShieldType::SHIELDTYPE_NONE && mShieldHealth < mShieldMaxHealth) {
+            mShieldHealth = std::min(mShieldMaxHealth, mShieldHealth + SCIENTIST_HEAL_PER_PULSE);
+            aHealed = true;
+        }
+        if (mBodyHealth < mBodyMaxHealth) {
+            mBodyHealth = std::min(mBodyMaxHealth, mBodyHealth + SCIENTIST_HEAL_PER_PULSE);
+            aHealed = true;
+        }
+    }
+
+    if (aHealed) {
+        Reanimation *aHealReanim = mApp->AddReanimation(mPosX + 60.0f, mPosY, mRenderOrder + 1, ReanimationType::REANIM_HEAL_PARTICLES);
+        if (aHealReanim != nullptr) {
+            aHealReanim->PlayReanim("anim_heal", ReanimLoopType::REANIM_PLAY_ONCE, 0, 24.0f);
+        }
+    }
+    return aHealed;
+}
+
+void Zombie::ApplyScientistSpray() {
+    constexpr int SCIENTIST_DAMAGE_PER_PULSE = 200;
+    constexpr int SCIENTIST_TARGET_RANGE_INSET = 20;
+
+    if (!mMindControlled) {
+        Plant *aPlant = nullptr;
+        while (mBoard->IteratePlants(aPlant)) {
+            const Rect aPlantRect = aPlant->GetPlantRect();
+            if (!IsInScientistTargetRange(aPlantRect, SCIENTIST_TARGET_RANGE_INSET) || !CanTargetPlant(aPlant, ZombieAttackType::ATTACKTYPE_CHEW)) {
+                continue;
+            }
+
+            aPlant->mPlantHealth -= SCIENTIST_DAMAGE_PER_PULSE;
+            aPlant->mRecentlyEatenCountdown = 100;
+            if (aPlant->mPlantHealth <= 0) {
+                aPlant->Die();
+            }
+        }
+    }
+
+    Zombie *aZombie = nullptr;
+    while (mBoard->IterateZombies(aZombie)) {
+        if (aZombie == this || aZombie->IsDeadOrDying() || !aZombie->IsOnBoard()) {
+            continue;
+        }
+
+        const Rect aZombieRect = aZombie->GetZombieRect();
+        const bool aIsFriendly = aZombie->mMindControlled == mMindControlled;
+        const int aRangeInset = aIsFriendly ? 0 : SCIENTIST_TARGET_RANGE_INSET;
+        if (!IsInScientistTargetRange(aZombieRect, aRangeInset)) {
+            continue;
+        }
+
+        if (!aIsFriendly) {
+            aZombie->TakeDamage(SCIENTIST_DAMAGE_PER_PULSE, 0U);
+            continue;
+        }
+
+        if (IsRemoteClientOrViewer()) {
+            continue;
+        }
+
+        const bool aHealed = aZombie->ApplyScientistHealing();
+        if (aHealed && IsRemoteServer()) {
+            U16_Event event{};
+            event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_SCIENTIST_HEAL;
+            event.data = uint16_t(mBoard->mZombies.DataArrayGetID(aZombie));
+            netplay::PutEvent(event);
+        }
+    }
+}
+
+void Zombie::SetScientistPhase(ZombiePhase thePhase) {
+    StopEating();
+    mZombiePhase = thePhase;
+
+    if (thePhase == ZombiePhase::PHASE_SCIENTIST_SHOOTING) {
+        mPhaseCounter = 200;
+        PlayZombieReanim("anim_shooting", ReanimLoopType::REANIM_PLAY_ONCE_AND_HOLD, 10, 24.0f);
+    } else if (thePhase == ZombiePhase::PHASE_SCIENTIST_WAITING) {
+        PlayZombieReanim("anim_idle", ReanimLoopType::REANIM_LOOP, 10, 24.0f);
+    } else if (thePhase == ZombiePhase::PHASE_ZOMBIE_NORMAL) {
+        StartWalkAnim(10);
+    }
+
+    if (IsRemoteServer()) {
+        U16U16_Event event{};
+        event.type = EventType::EVENT_SERVER_BOARD_ZOMBIE_SCIENTIST_STATE;
+        event.data1 = uint16_t(mBoard->ZombieGetID(this));
+        event.data2 = uint16_t(thePhase);
+        netplay::PutEvent(event);
+    }
+}
+
+void Zombie::UpdateZombieScientist() {
+    Reanimation *aBodyReanim = mApp->ReanimationTryToGet(mBodyReanimID);
+    if (aBodyReanim == nullptr || IsDeadOrDying()) {
+        return;
+    }
+
+    if (!mHasHead) {
+        if (!IsRemoteClientOrViewer() && (mZombiePhase == ZombiePhase::PHASE_SCIENTIST_WAITING || mZombiePhase == ZombiePhase::PHASE_SCIENTIST_SHOOTING)) {
+            SetScientistPhase(ZombiePhase::PHASE_ZOMBIE_NORMAL);
+        }
+        return;
+    }
+
+    if (mZombiePhase == ZombiePhase::PHASE_SCIENTIST_SHOOTING) {
+        if (!IsImmobilizied() && aBodyReanim->ShouldTriggerTimedEvent(0.44f)) {
+            Reanimation *aMistReanim = mApp->AddReanimation(mPosX + 20.0f, mPosY + 80.0f, mRenderOrder + 1, ReanimationType::REANIM_HEAL_MIST);
+            if (aMistReanim != nullptr) {
+                aMistReanim->PlayReanim("anim_mist", ReanimLoopType::REANIM_PLAY_ONCE, 0, 24.0f);
+            }
+            ApplyScientistSpray();
+            mApp->PlayFoley(FoleyType::FOLEY_BALLOONINFLATE);
+        }
+        if (IsRemoteClientOrViewer()) {
+            return;
+        }
+        if (aBodyReanim->mLoopCount > 0) {
+            SetScientistPhase(HasScientistTriggerTarget() ? ZombiePhase::PHASE_SCIENTIST_WAITING : ZombiePhase::PHASE_ZOMBIE_NORMAL);
+        }
+        return;
+    }
+
+    if (IsRemoteClientOrViewer()) {
+        return;
+    }
+
+    const bool aHasTarget = HasScientistTriggerTarget();
+    if (mZombiePhase == ZombiePhase::PHASE_SCIENTIST_WAITING) {
+        if (!aHasTarget) {
+            SetScientistPhase(ZombiePhase::PHASE_ZOMBIE_NORMAL);
+        } else if (!IsImmobilizied() && mPhaseCounter <= 0) {
+            SetScientistPhase(ZombiePhase::PHASE_SCIENTIST_SHOOTING);
+        }
+        return;
+    }
+
+    if (!IsImmobilizied() && aHasTarget) {
+        SetScientistPhase(mPhaseCounter <= 0 ? ZombiePhase::PHASE_SCIENTIST_SHOOTING : ZombiePhase::PHASE_SCIENTIST_WAITING);
     }
 }
 
@@ -6853,6 +7069,8 @@ void Zombie::DropHead_Origin(unsigned int theDamageFlags) {
             } else if (mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
                 ReanimShowPrefix("Zombie_crossing_guard_hair", RENDER_GROUP_HIDDEN);
                 aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIE_CROSSING_GUARD_HEAD);
+            } else if (mZombieType == ZombieType::ZOMBIE_SCIENTIST) {
+                aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIE_SCIENTIST_HEAD);
             }
         }
         return;
@@ -7201,6 +7419,10 @@ void Zombie::SetupReanimForLostArm(unsigned int theDamageFlags) {
             ReanimShowPrefix("Zombie_crossing_guard_outerarm_lower", RENDER_GROUP_HIDDEN);
             ReanimShowPrefix("Zombie_crossing_guard_outerarm_hand", RENDER_GROUP_HIDDEN);
             break;
+        case ZombieType::ZOMBIE_SCIENTIST:
+            ReanimShowPrefix("Zombie_scientist_outerarm_lower", RENDER_GROUP_HIDDEN);
+            ReanimShowPrefix("Zombie_scientist_outerarm_hand", RENDER_GROUP_HIDDEN);
+            break;
         default:
             ReanimShowPrefix("Zombie_outerarm_lower", RENDER_GROUP_HIDDEN);
             ReanimShowPrefix("Zombie_outerarm_hand", RENDER_GROUP_HIDDEN);
@@ -7262,6 +7484,10 @@ void Zombie::SetupReanimForLostArm(unsigned int theDamageFlags) {
                 GetTrackPosition("Zombie_crossing_guard_outerarm_lower", aPosX, aPosY);
                 aBodyReanim->SetImageOverride("Zombie_crossing_guard_outerarm_upper", addonImages.IMAGE_REANIM_ZOMBIE_CROSSING_GUARD_OUTERARM_UPPER2);
                 break;
+            case ZombieType::ZOMBIE_SCIENTIST:
+                GetTrackPosition("Zombie_scientist_outerarm_lower", aPosX, aPosY);
+                aBodyReanim->SetImageOverride("Zombie_scientist_outerarm_upper", addonImages.IMAGE_REANIM_ZOMBIE_SCIENTIST_OUTERARM_UPPER2);
+                break;
             default:
                 GetTrackPosition("Zombie_outerarm_lower", aPosX, aPosY);
                 aBodyReanim->SetImageOverride("Zombie_outerarm_upper", IMAGE_REANIM_ZOMBIE_OUTERARM_UPPER2);
@@ -7307,6 +7533,9 @@ void Zombie::SetupReanimForLostArm(unsigned int theDamageFlags) {
                     break;
                 case ZombieType::ZOMBIE_CROSSING_GUARD:
                     aParticle->OverrideImage(nullptr, addonImages.IMAGE_ZOMBIE_CROSSING_GUARD_ARM);
+                    break;
+                case ZombieType::ZOMBIE_SCIENTIST:
+                    aParticle->OverrideImage(nullptr, addonImages.IMAGE_REANIM_ZOMBIE_SCIENTIST_HAND);
                     break;
                 case ZombieType::ZOMBIE_SUNDAY_EDITION:
                     aParticle->OverrideImage(nullptr, addonImages.IMAGE_REANIM_ZOMBIE_SUNDAY_EDITION_LEFTARM_LOWER);
@@ -8393,7 +8622,8 @@ void Zombie::PickRandomSpeed() {
         mVelX = 0.4f;
     } else if (mZombieType == ZombieType::ZOMBIE_DANCER || mZombieType == ZombieType::ZOMBIE_BACKUP_DANCER || mZombieType == ZombieType::ZOMBIE_POGO || mZombieType == ZombieType::ZOMBIE_FLAG
                || mZombiePhase == ZombiePhase::PHASE_IMP_RUNNING || mZombieType == ZombieType::ZOMBIE_JACKSON || mZombieType == ZombieType::ZOMBIE_BACKUP_JACKSON
-               || mZombieType == ZombieType::ZOMBIE_EXPLORER || mZombieType == ZombieType::ZOMBIE_DOGWALKER || mZombiePhase == ZombiePhase::PHASE_DOG_WALKING) {
+               || mZombieType == ZombieType::ZOMBIE_EXPLORER || mZombieType == ZombieType::ZOMBIE_DOGWALKER || mZombieType == ZombieType::ZOMBIE_SCIENTIST
+               || mZombiePhase == ZombiePhase::PHASE_DOG_WALKING) {
         mVelX = 0.45f;
     } else if (mZombiePhase == ZombiePhase::PHASE_DIGGER_TUNNELING || mZombiePhase == ZombiePhase::PHASE_POLEVAULTER_PRE_VAULT || mZombieType == ZombieType::ZOMBIE_FOOTBALL
                || mZombieType == ZombieType::ZOMBIE_SNORKEL || mZombieType == ZombieType::ZOMBIE_JACK_IN_THE_BOX) {
@@ -8733,7 +8963,8 @@ bool Zombie::ZombieNotWalking() {
         || mZombiePhase == ZombiePhase::PHASE_FOOTBALL_KICKING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_THROW_PREPARING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_THROW_END
         || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_PREPARING || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_ATTACK
         || mZombiePhase == ZombiePhase::PHASE_GIGA_GARGANTUAR_LIGHTNING_END || mZombiePhase == ZombiePhase::PHASE_DOGWALKER_ROPE_BREAK || mZombiePhase == ZombiePhase::PHASE_TELEPORTATION_SHOOTING
-        || mZombiePhase == ZombiePhase::PHASE_SUPER_NOVA_GARGANTUAR_DESTROY || mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING) {
+        || mZombiePhase == ZombiePhase::PHASE_SUPER_NOVA_GARGANTUAR_DESTROY || mZombiePhase == ZombiePhase::PHASE_CROSSING_GUARD_THROWING || mZombiePhase == ZombiePhase::PHASE_SCIENTIST_WAITING
+        || mZombiePhase == ZombiePhase::PHASE_SCIENTIST_SHOOTING) {
         return true;
     }
 
