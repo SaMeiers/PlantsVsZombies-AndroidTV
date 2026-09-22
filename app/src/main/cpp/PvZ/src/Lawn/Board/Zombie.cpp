@@ -908,7 +908,11 @@ void Zombie::UpdateZombieCrossingGuard() {
     }
 }
 
-bool Zombie::IsInScientistTargetRange(const Rect &theTargetRect, int theRangeInset) {
+bool Zombie::IsInScientistTargetRange(const Rect &theTargetRect, int theTargetRow, int theRangeInset) {
+    if (std::abs(theTargetRow - mRow) > 1) {
+        return false;
+    }
+
     Rect aTargetRange = GetZombieAttackRect();
     aTargetRange.mWidth -= theRangeInset;
     if (!IsWalkingBackwards()) {
@@ -925,7 +929,7 @@ bool Zombie::HasScientistTriggerTarget() {
         Plant *aPlant = nullptr;
         while (mBoard->IteratePlants(aPlant)) {
             const Rect aPlantRect = aPlant->GetPlantRect();
-            if (IsInScientistTargetRange(aPlantRect, SCIENTIST_TARGET_RANGE_INSET) && CanTargetPlant(aPlant, ZombieAttackType::ATTACKTYPE_CHEW)) {
+            if (IsInScientistTargetRange(aPlantRect, aPlant->mRow, SCIENTIST_TARGET_RANGE_INSET) && CanTargetPlant(aPlant, ZombieAttackType::ATTACKTYPE_CHEW)) {
                 return true;
             }
         }
@@ -940,7 +944,7 @@ bool Zombie::HasScientistTriggerTarget() {
         const Rect aZombieRect = aZombie->GetZombieRect();
         const bool aIsFriendly = aZombie->mMindControlled == mMindControlled;
         const int aRangeInset = aIsFriendly ? SCIENTIST_FRIEND_RANGE_INSET : SCIENTIST_TARGET_RANGE_INSET;
-        if (!IsInScientistTargetRange(aZombieRect, aRangeInset)) {
+        if (!IsInScientistTargetRange(aZombieRect, aZombie->mRow, aRangeInset)) {
             continue;
         }
 
@@ -997,7 +1001,7 @@ void Zombie::ApplyScientistSpray() {
         Plant *aPlant = nullptr;
         while (mBoard->IteratePlants(aPlant)) {
             const Rect aPlantRect = aPlant->GetPlantRect();
-            if (!IsInScientistTargetRange(aPlantRect, SCIENTIST_TARGET_RANGE_INSET) || !CanTargetPlant(aPlant, ZombieAttackType::ATTACKTYPE_CHEW) || aPlant->IsInvulnerable()) {
+            if (!IsInScientistTargetRange(aPlantRect, aPlant->mRow, SCIENTIST_TARGET_RANGE_INSET) || !CanTargetPlant(aPlant, ZombieAttackType::ATTACKTYPE_CHEW) || aPlant->IsInvulnerable()) {
                 continue;
             }
 
@@ -1018,7 +1022,7 @@ void Zombie::ApplyScientistSpray() {
         const Rect aZombieRect = aZombie->GetZombieRect();
         const bool aIsFriendly = aZombie->mMindControlled == mMindControlled;
         const int aRangeInset = aIsFriendly ? 0 : SCIENTIST_TARGET_RANGE_INSET;
-        if (!IsInScientistTargetRange(aZombieRect, aRangeInset)) {
+        if (!IsInScientistTargetRange(aZombieRect, aZombie->mRow, aRangeInset)) {
             continue;
         }
 

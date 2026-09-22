@@ -411,7 +411,7 @@ public:
     void UpdateSuperNovaGargantuar();
     void UpdateZombieCrossingGuard();
     void UpdateZombieScientist();
-    bool IsInScientistTargetRange(const Sexy::Rect &theTargetRect, int theRangeInset);
+    bool IsInScientistTargetRange(const Sexy::Rect &theTargetRect, int theTargetRow, int theRangeInset);
     bool HasScientistTriggerTarget();
     void ApplyScientistSpray();
     bool ApplyScientistHealing();
