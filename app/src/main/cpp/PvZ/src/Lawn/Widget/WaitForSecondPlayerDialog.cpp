@@ -3937,10 +3937,11 @@ void WaitForSecondPlayerDialog::DrawServerRoomList(Sexy::Graphics *g) {
         pvzstl::string probeTag = TodStringTranslate(r.hostProbeDone ? "[P2P_READY]" : "[P2P_NOT_READY]");
         tag = tag.empty() ? probeTag : tag + ' ' + probeTag;
 
-        if (r.spectateAllowed && r.full) {
-            tag = TodStringTranslate("[SPECTATE]");
+        const bool canSpectate = r.spectateAllowed && r.full;
+        if (canSpectate) {
+            tag = TodStringTranslate(r.gaming ? "[SPECTATE_QUEUE_AVAILABLE]" : "[SPECTATE_AVAILABLE]");
         }
-        if (r.gaming) {
+        if (r.gaming && !canSpectate) {
             tag = tag.empty() ? TodStringTranslate("[ROOM_STARTED]") : tag + ' ' + TodStringTranslate("[ROOM_STARTED]");
         }
 

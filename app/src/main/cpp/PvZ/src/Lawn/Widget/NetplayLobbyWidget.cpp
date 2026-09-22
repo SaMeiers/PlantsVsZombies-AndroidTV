@@ -62,11 +62,11 @@ pvzstl::string BuildRoomTag(const ServerRoomItem &room) {
     if (room.protocolVersion != 0 && room.protocolVersion != NETPLAY_VERSION) {
         return TodStringTranslate(room.protocolVersion < NETPLAY_VERSION ? "[SERVER_ROOM_VERSION_ERROR_LOWER]" : "[SERVER_ROOM_VERSION_ERROR_HIGHER]");
     }
+    if (room.full && room.spectateAllowed) {
+        return TodStringTranslate(room.gaming ? "[SPECTATE_QUEUE_AVAILABLE]" : "[SPECTATE_AVAILABLE]");
+    }
     if (room.gaming) {
         return TodStringTranslate("[TAG_GAMING]");
-    }
-    if (room.full && room.spectateAllowed) {
-        return TodStringTranslate("[SPECTATE]");
     }
     if (room.full) {
         return TodStringTranslate("[TAG_FULL]");
