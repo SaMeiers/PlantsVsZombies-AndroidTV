@@ -990,7 +990,7 @@ bool Zombie::ApplyScientistHealing() {
 }
 
 void Zombie::ApplyScientistSpray() {
-    constexpr int SCIENTIST_DAMAGE_PER_PULSE = 200;
+    constexpr int SCIENTIST_DAMAGE_PER_PULSE = 150;
     constexpr int SCIENTIST_TARGET_RANGE_INSET = 20;
 
     if (!mMindControlled) {
@@ -6272,7 +6272,7 @@ void Zombie::SpawnSunBeanSun(int theSunValue) {
 
 void Zombie::SettleSunBeanSun() {
     const int aDamageCapacity = GetSunBeanDamageCapacity(0U) + mSunBeanDamageRemainder;
-    const int aSunValue = std::min(int(mSunBeanSun), aDamageCapacity / 25 * 5);
+    const int aSunValue = std::min(int(mSunBeanSun), aDamageCapacity / 20 * 5);
     mSunBeanSun = 0;
     mSunBeanDamageRemainder = 0;
     SpawnSunBeanSun(aSunValue);
@@ -7880,8 +7880,8 @@ void Zombie::TakeDamage_Origin(int theDamage, unsigned int theDamageFlags) {
     if (mSunBeanSun > 0 && theDamage > 0) {
         const int aDamageBeforeHeadDrop = std::min(theDamage, GetSunBeanDamageCapacity(theDamageFlags));
         mSunBeanDamageRemainder += aDamageBeforeHeadDrop;
-        int aSunValue = std::min(int(mSunBeanSun), mSunBeanDamageRemainder / 25 * 5);
-        mSunBeanDamageRemainder -= aSunValue * 5;
+        int aSunValue = std::min(int(mSunBeanSun), mSunBeanDamageRemainder / 20 * 5);
+        mSunBeanDamageRemainder -= aSunValue * 4;
         mSunBeanSun -= aSunValue;
         if (mSunBeanSun == 0) {
             mSunBeanDamageRemainder = 0;
@@ -9540,7 +9540,7 @@ void Zombie::AnimateChewSound() {
         mApp->PlaySample(SOUND_GULP);
         aPlant->Die();
 
-        mSunBeanSun += 250;
+        mSunBeanSun += 200;
         if (IsRemoteServer()) {
             U16U16_Event event = {{EventType::EVENT_SERVER_BOARD_ZOMBIE_SUN_BEAN_SUN}, uint16_t(mBoard->mZombies.DataArrayGetID(this)), uint16_t(mSunBeanSun)};
             netplay::PutEvent(event);

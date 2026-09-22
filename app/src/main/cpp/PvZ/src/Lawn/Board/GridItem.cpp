@@ -382,17 +382,16 @@ void GridItem::Update() {
             mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
             if (mGridItemType == GridItemType::GRIDITEM_MP_BURIAL_MOUND) {
                 switch (mMoundLevel) {
-                    case 0:
-                        mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_SMALL_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
-                        break;
                     case 1:
-                        mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
+                        mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_SMALL_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
                         break;
                     case 2:
-                        mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_SMALL_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
                         mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
                         break;
                     case 3:
+                        mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_SMALL_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
+                        mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
+                        break;
                     case 4:
                         mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
                         mBoard->AddCoin(mBoard->GridToPixelX(mGridX, mGridY), mBoard->GridToPixelY(mGridX, mGridY), CoinType::COIN_VS_ZOMBIE_BRAIN, CoinMotion::COIN_MOTION_FROM_GRAVE_STONE);
@@ -533,10 +532,10 @@ int GridItem::GetMoundUpgradeCost() const {
     int aCost = 0;
     switch (mMoundLevel) {
         case 0:
-            aCost = 150;
+            aCost = 100;
             break;
         case 1:
-            aCost = 225;
+            aCost = 200;
             break;
         case 2:
             aCost = 300;

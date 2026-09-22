@@ -1676,9 +1676,9 @@ void Plant::Fire_Origin(Zombie *theTargetZombie, int theRow, PlantWeapon thePlan
         aProjectile->mRelatedPlantID = mBoard->PlantGetID(this);
         aProjectile->mVelX = 6.6f; // 直线子弹的两倍速
 
-        // 发射时预先锁定本行最靠前的两个目标，并在最远锁定目标的 X + 80 处停留后折返。
+        // 发射时预先锁定本行最靠前的三个目标，并在最远锁定目标的 X + 60 处停留后折返。
         // mHitZombieIDs / mHitGridItemIDs 保存锁定名单；mHitTorchwoodGridX 保存去程命中位图；mCobTargetRow 保存回程命中位图。
-        constexpr int BOOMERANG_MAX_TARGETS = 2;
+        constexpr int BOOMERANG_MAX_TARGETS = 3;
 
         struct BoomerangLockedTarget {
             float mTargetX;
@@ -1745,6 +1745,10 @@ void Plant::Fire_Origin(Zombie *theTargetZombie, int theRow, PlantWeapon thePlan
                 }
             }
 
+            // 墓碑只锁定本行最靠近回旋镖射手的一个。
+            GridItem *aClosestGravestone = nullptr;
+            float aClosestGravestoneX = 0.0f;
+
             aGridItem = nullptr;
             while (mBoard->IterateGridItems(aGridItem)) {
                 if (aGridItem->mGridY != theRow) {
@@ -1755,8 +1759,8 @@ void Plant::Fire_Origin(Zombie *theTargetZombie, int theRow, PlantWeapon thePlan
                     continue;
                 }
 
-                const bool aDamageableGridItem = aGridItem->mGridItemType == GridItemType::GRIDITEM_GRAVESTONE || aGridItem->mGridItemType == GridItemType::GRIDITEM_MP_BURIAL_MOUND
-                    || (aGridItem->mGridItemType == GridItemType::GRIDITEM_MP_TARGET_ZOMBIE && aGridItem->mVSTargetZombieHealth > 0);
+                const bool aIsGravestone = aGridItem->mGridItemType == GridItemType::GRIDITEM_GRAVESTONE || aGridItem->mGridItemType == GridItemType::GRIDITEM_MP_BURIAL_MOUND;
+                const bool aDamageableGridItem = aIsGravestone || (aGridItem->mGridItemType == GridItemType::GRIDITEM_MP_TARGET_ZOMBIE && aGridItem->mVSTargetZombieHealth > 0);
                 if (!aDamageableGridItem) {
                     continue;
                 }
@@ -1766,7 +1770,20 @@ void Plant::Fire_Origin(Zombie *theTargetZombie, int theRow, PlantWeapon thePlan
                     continue;
                 }
 
+                if (aIsGravestone) {
+                    const float aGridItemX = float(aGridItemRect.mX);
+                    if (aClosestGravestone == nullptr || aGridItemX < aClosestGravestoneX) {
+                        aClosestGravestone = aGridItem;
+                        aClosestGravestoneX = aGridItemX;
+                    }
+                    continue;
+                }
+
                 AddBoomerangTarget(float(aGridItemRect.mX), ZombieID::ZOMBIEID_NULL, mBoard->GridItemGetID(aGridItem));
+            }
+
+            if (aClosestGravestone != nullptr) {
+                AddBoomerangTarget(aClosestGravestoneX, ZombieID::ZOMBIEID_NULL, mBoard->GridItemGetID(aClosestGravestone));
             }
         }
 
@@ -1785,7 +1802,7 @@ void Plant::Fire_Origin(Zombie *theTargetZombie, int theRow, PlantWeapon thePlan
         aProjectile->mCobTargetRow = 0;
 
         if (aLockedTargetCount > 0) {
-            aProjectile->mCobTargetX = aLockedTargets[aLockedTargetCount - 1].mTargetX + 80.0f;
+            aProjectile->mCobTargetX = aLockedTargets[aLockedTargetCount - 1].mTargetX + 60.0f;
         } else {
             // 动画期间目标全部消失时，保留一个安全的出界折返点。
             aProjectile->mCobTargetX = 790.0f;
@@ -2209,13 +2226,13 @@ static int GetVSCostDefault(SeedType theSeedType) {
         case SeedType::SEED_ZOMBIE_YETI:
         case SeedType::SEED_ZOMBIE_PEA_HEAD:
         case SeedType::SEED_ZOMBIE_SQUASH_HEAD:
+        case SeedType::SEED_ZOMBIE_MOUND:
             return 50;
         case SeedType::SEED_SQUASH:
         case SeedType::SEED_GARLIC:
         case SeedType::SEED_CELERY_STALKER:
         case SeedType::SEED_ZOMBIE_TRAFFIC_CONE:
         case SeedType::SEED_ZOMBIE_BOBSLED:
-        case SeedType::SEED_ZOMBIE_MOUND:
             return 75;
         case SeedType::SEED_CACTUS:
         case SeedType::SEED_SPORESHROOM:
@@ -2240,6 +2257,7 @@ static int GetVSCostDefault(SeedType theSeedType) {
         case SeedType::SEED_ZOMBIE_SNORKEL:
         case SeedType::SEED_ZOMBIE_DOLPHIN_RIDER:
         case SeedType::SEED_ZOMBIE_JALAPENO_HEAD:
+        case SeedType::SEED_ZOMBIE_GATLINGPEA_HEAD:
         case SeedType::SEED_ZOMBIE_CROSSING_GUARD:
             return 125;
         case SeedType::SEED_SNOWPEA:
@@ -2248,7 +2266,6 @@ static int GetVSCostDefault(SeedType theSeedType) {
         case SeedType::SEED_ZOMBIE_DANCER:
         case SeedType::SEED_ZOMBIE_DIGGER:
         case SeedType::SEED_ZOMBIE_LADDER:
-        case SeedType::SEED_ZOMBIE_GATLINGPEA_HEAD:
         case SeedType::SEED_ZOMBIE_TALLNUT_HEAD:
         case SeedType::SEED_ZOMBIE_GIGA_FOOTBALL:
         case SeedType::SEED_ZOMBIE_JACKSON:
@@ -2358,9 +2375,9 @@ static int GetVSCostBalanced(SeedType theSeedType) {
             aCost = 25;
             break;
         case SeedType::SEED_POTATOMINE:          // 25 -> 50
+        case SeedType::SEED_GRAVEBUSTER:         // 75 -> 50
         case SeedType::SEED_TANGLEKELP:          // 25 -> 50
         case SeedType::SEED_BLOVER:              // 100 -> 50
-        case SeedType::SEED_PUMPKINSHELL:        // 125 -> 50
         case SeedType::SEED_KERNELPULT:          // 100 -> 50
         case SeedType::SEED_ZOMBIE_TRAFFIC_CONE: // 75 -> 50
         case SeedType::SEED_ZOMBIE_BOBSLED:      // 75 -> 50
@@ -2368,7 +2385,10 @@ static int GetVSCostBalanced(SeedType theSeedType) {
             break;
         case SeedType::SEED_PEASHOOTER:           // 100 -> 75
         case SeedType::SEED_SPIKEWEED:            // 100 -> 75
+        case SeedType::SEED_PUMPKINSHELL:         // 125 -> 75
+        case SeedType::SEED_CABBAGEPULT:          // 100 -> 75
         case SeedType::SEED_UMBRELLA:             // 100 -> 75
+        case SeedType::SEED_SPORESHROOM:          // 100 -> 75
         case SeedType::SEED_ZOMBIE_POLEVAULTER:   // 100 -> 75
         case SeedType::SEED_ZOMBIE_DOLPHIN_RIDER: // 125 -> 75
         case SeedType::SEED_ZOMBIE_EXPLORER:      // 100 -> 75
@@ -2381,6 +2401,7 @@ static int GetVSCostBalanced(SeedType theSeedType) {
             aCost = 100;
             break;
         case SeedType::SEED_SNOWPEA:                 // 150 -> 125
+        case SeedType::SEED_ZOMBIE_DANCER:           // 150 -> 125
         case SeedType::SEED_ZOMBONI:                 // 175 -> 125
         case SeedType::SEED_ZOMBIE_DIGGER:           // 150 -> 125
         case SeedType::SEED_ZOMBIE_LADDER:           // 150 -> 125
@@ -2459,18 +2480,17 @@ static int GetVSRefreshTimeBalanced(SeedType theSeedType) {
         case SeedType::SEED_REPEATER:               // 7.5 -> 15
         case SeedType::SEED_PUFFSHROOM:             // 7.5 -> 15
         case SeedType::SEED_CACTUS:                 // 7.5 -> 15
+        case SeedType::SEED_CABBAGEPULT:            // 7.5 -> 15
         case SeedType::SEED_KERNELPULT:             // 7.5 -> 15
+        case SeedType::SEED_SPORESHROOM:            // 7.5 -> 15
         case SeedType::SEED_ZOMBIE_NORMAL:          // 7.5 -> 15
         case SeedType::SEED_ZOMBIE_JACK_IN_THE_BOX: // 30 -> 15
         case SeedType::SEED_ZOMBIE_SNORKEL:         // 7.5 -> 15
             return 1500;
-        case SeedType::SEED_TORCHWOOD:            // 7.5 -> 30
         case SeedType::SEED_SPIKEWEED:            // 7.5 -> 30
         case SeedType::SEED_UMBRELLA:             // 7.5 -> 30
         case SeedType::SEED_ZOMBIE_DOLPHIN_RIDER: // 7.5 -> 30
             return 3000;
-        case SeedType::SEED_PUMPKINSHELL: // 30 -> 60
-            return 6000;
         default:
             return aRefreshTime;
     }

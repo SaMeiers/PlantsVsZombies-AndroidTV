@@ -1800,13 +1800,6 @@ void Projectile::Draw(Graphics *g) {
         int aCelWidth = aImage->GetCelWidth();
         int aCelHeight = aImage->GetCelHeight();
         Rect aSrcRect(aCelWidth * mFrame, aCelHeight * aProjectileDef.mImageRow, aCelWidth, aCelHeight);
-        if (mProjectileType == ProjectileType::PROJECTILE_ACKEE) {
-            // The supplied PvZ2 texture uses a 200x200 canvas around a 25x53 projectile.
-            // Crop the transparent padding so rotation stays centered on the fruit itself.
-            aCelWidth = 25;
-            aCelHeight = 53;
-            aSrcRect = Rect(88, 25, aCelWidth, aCelHeight);
-        }
         if (FloatApproxEqual(mRotation, 0.0f) && FloatApproxEqual(aScaleX, 1.0f) && FloatApproxEqual(aScaleY, 1.0f)) {
             Rect aDestRect(0, 0, aCelWidth, aCelHeight);
             gProj.DrawImageMirror(aImage, aDestRect, aSrcRect, aMirror);
