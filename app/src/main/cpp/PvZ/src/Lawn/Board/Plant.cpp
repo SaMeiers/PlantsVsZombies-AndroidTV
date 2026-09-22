@@ -3288,8 +3288,7 @@ bool Plant::IsInvulnerable() {
     }
 
     if (mSeedType == SeedType::SEED_CHERRYBOMB || mSeedType == SeedType::SEED_ICESHROOM || mSeedType == SeedType::SEED_DOOMSHROOM || mSeedType == SeedType::SEED_JALAPENO
-        || mSeedType == SeedType::SEED_BLOVER || mSeedType == SeedType::SEED_CHILLY_PEPPER || mState == PlantState::STATE_SQUASH_LOOK
-        || mState == PlantState::STATE_SQUASH_PRE_LAUNCH) {
+        || mSeedType == SeedType::SEED_BLOVER || mSeedType == SeedType::SEED_CHILLY_PEPPER || mState == PlantState::STATE_SQUASH_LOOK || mState == PlantState::STATE_SQUASH_PRE_LAUNCH) {
         if (!mIsAsleep) {
             return true;
         }

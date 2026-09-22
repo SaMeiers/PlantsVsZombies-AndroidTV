@@ -112,10 +112,6 @@ void DrawActiveRoomInfo(Graphics *g, const WaitForSecondPlayerDialog *dialog) {
         return;
     }
 
-    const char *roomName = dialog->mServerHosting ? dialog->mServerHostedRoomName : dialog->mServerJoinedRoomName;
-    if (roomName[0] == '\0') {
-        roomName = "-";
-    }
     const char *roleKey = dialog->mServerHosting ? "[HOST]" : (dialog->mServerSpectating ? "[SPECTATING]" : "[CLIENT]");
     const char *localName = (dialog->mApp != nullptr && dialog->mApp->mPlayerInfo != nullptr && dialog->mApp->mPlayerInfo->mName != nullptr) ? dialog->mApp->mPlayerInfo->mName : "-";
     const char *hostName = dialog->mServerHosting ? localName : (gServerHostName[0] != '\0' ? gServerHostName : "-");
@@ -129,12 +125,11 @@ void DrawActiveRoomInfo(Graphics *g, const WaitForSecondPlayerDialog *dialog) {
     }
 
     TodDrawString(g, roleKey, centerX, 245, FONT_DWARVENTODCRAFT24, Color(255, 238, 175), DS_ALIGN_CENTER);
-    TodDrawString(g, roomName, centerX, 285, FONT_DWARVENTODCRAFT18, Color(210, 255, 180), DS_ALIGN_CENTER);
-    TodDrawString(g, StrFormat("%s: %s", TodStringTranslate("[HOST]").c_str(), hostName), centerX, 325, FONT_HOUSEOFTERROR20, Color(235, 220, 185), DS_ALIGN_CENTER);
-    TodDrawString(g, StrFormat("%s: %s", TodStringTranslate("[CLIENT]").c_str(), guestName.c_str()), centerX, 365, FONT_HOUSEOFTERROR20, Color(235, 220, 185), DS_ALIGN_CENTER);
+    TodDrawString(g, StrFormat("%s: %s", TodStringTranslate("[HOST]").c_str(), hostName), centerX, 285, FONT_HOUSEOFTERROR20, Color(235, 220, 185), DS_ALIGN_CENTER);
+    TodDrawString(g, StrFormat("%s: %s", TodStringTranslate("[CLIENT]").c_str(), guestName.c_str()), centerX, 325, FONT_HOUSEOFTERROR20, Color(235, 220, 185), DS_ALIGN_CENTER);
 
     if (dialog->mServerHostSpectateAllowed || dialog->mServerJoinedSpectateAllowed || dialog->mServerSpectating || dialog->mServerSpectatorCount > 0) {
-        TodDrawStringWrapped(g, BuildSpectatorsText(dialog), Rect(kRightPanelX + 145, 385, 560, 65), FONT_HOUSEOFTERROR16, Color(235, 220, 185), DS_ALIGN_CENTER, false);
+        TodDrawStringWrapped(g, BuildSpectatorsText(dialog), Rect(kRightPanelX + 145, 345, 560, 65), FONT_HOUSEOFTERROR16, Color(235, 220, 185), DS_ALIGN_CENTER, false);
     }
 }
 } // namespace
