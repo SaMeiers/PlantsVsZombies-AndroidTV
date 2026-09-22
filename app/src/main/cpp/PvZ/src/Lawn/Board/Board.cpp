@@ -3814,7 +3814,7 @@ void Board::Update() {
         if (choiceSeedType != SeedType::SEED_NONE && !IsOnlineServerModeActive() && !gIsReplayMode) {
             if (SeedBank *aSeedBank = mSeedBank[targetSeedBank]) {
                 SeedPacket &aSeedPacket = aSeedBank->mSeedPackets[choiceSeedPacketIndex];
-                if (aSeedBank->mIsZombie) {
+                if (aSeedBank->mIsZombie || mApp->IsIZombieLevel()) {
                     // IZ模式中用不了墓碑
                     if (Challenge::IsZombieSeedType(choiceSeedType) && (choiceSeedType != SeedType::SEED_ZOMBIE_GRAVESTONE || mApp->IsVSMode())) {
                         aSeedPacket.mPacketType = choiceSeedType;
