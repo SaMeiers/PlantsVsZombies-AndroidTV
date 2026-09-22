@@ -8749,7 +8749,8 @@ void Zombie::ApplyBurn() {
         || mZombiePhase == ZombiePhase::PHASE_DIGGER_TUNNELING || mZombiePhase == ZombiePhase::PHASE_DIGGER_TUNNELING_PAUSE_WITHOUT_AXE || mZombiePhase == ZombiePhase::PHASE_DIGGER_RISING
         || mZombiePhase == ZombiePhase::PHASE_DIGGER_RISE_WITHOUT_AXE || mZombiePhase == ZombiePhase::PHASE_ZOMBIE_MOWERED || mInPool) {
         DieWithLoot();
-    } else if (mZombieType == ZOMBIE_BUNGEE || mZombieType == ZOMBIE_YETI || mZombieType == ZOMBIE_DOG || Zombie::IsZombotany(mZombieType) || IsBobsledTeamWithSled() || IsFlying() || !mHasHead) {
+    } else if (mZombieType == ZOMBIE_BUNGEE || mZombieType == ZOMBIE_YETI || mZombieType == ZOMBIE_CROSSING_GUARD || mZombieType == ZOMBIE_DOG || Zombie::IsZombotany(mZombieType)
+               || IsBobsledTeamWithSled() || IsFlying() || !mHasHead) {
         SetAnimRate(0.0f);
         Reanimation *aHeadReanim = mApp->ReanimationTryToGet(mSpecialHeadReanimID);
         if (aHeadReanim) {
@@ -8775,7 +8776,7 @@ void Zombie::ApplyBurn() {
             aCharredPosX -= 6.0f;
             aReanimType = ReanimationType::REANIM_ZOMBIE_CHARRED_IMP;
         }
-        if (mZombieType == ZombieType::ZOMBIE_DIGGER || mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
+        if (mZombieType == ZombieType::ZOMBIE_DIGGER) {
             if (IsWalkingBackwards()) {
                 aCharredPosX += 14.0f;
             }
@@ -8801,7 +8802,7 @@ void Zombie::ApplyBurn() {
         aCharredReanim->mAnimRate *= RandRangeFloat(0.9f, 1.1f);
         if (mZombiePhase == ZombiePhase::PHASE_DIGGER_WALKING_WITHOUT_AXE) {
             aCharredReanim->SetFramesForLayer("anim_crumble_noaxe");
-        } else if (mZombieType == ZombieType::ZOMBIE_DIGGER || mZombieType == ZombieType::ZOMBIE_CROSSING_GUARD) {
+        } else if (mZombieType == ZombieType::ZOMBIE_DIGGER) {
             aCharredReanim->SetFramesForLayer("anim_crumble");
         } else if (IsGargantuar() && !mHasObject) {
             aCharredReanim->SetImageOverride("impblink", IMAGE_BLANK);
