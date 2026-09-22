@@ -104,6 +104,10 @@ VSSetupAddonWidget::VSSetupAddonWidget(VSSetupMenu *theVSSetupMenu) {
 
     UpdateGlobalBpButtonState();
 
+    if (IsOnlineModeActive()) {
+        SetDisable(mAISettingsButton);
+    }
+
     if (Challenge::msVSShuffleMode) {
         SetDisable(mExtraPacketCheckbox);
         SetDisable(mExtendedSeedsCheckbox);
@@ -401,7 +405,7 @@ void VSSetupAddonWidget::Draw(Graphics *g) const {
 }
 
 void VSSetupAddonWidget::OpenAISettings() {
-    if (mAISettingsWidget != nullptr || mApp == nullptr || mAISettingsButton->mDisabled) {
+    if (mAISettingsWidget != nullptr || mApp == nullptr || mAISettingsButton->mDisabled || IsOnlineModeActive()) {
         return;
     }
     mAISettingsWidget = new AISettingsWidget(this);
