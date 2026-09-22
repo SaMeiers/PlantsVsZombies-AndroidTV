@@ -115,6 +115,7 @@ PlantDefinition gExtendedPlantDefs[]{
     {SeedType::SEED_PEANUT, nullptr, ReanimationType::REANIM_PEANUT, 0, 150, 3000, PlantSubClass::SUBCLASS_SHOOTER, 200, "PEANUT"},
     {SeedType::SEED_ENDURIAN, nullptr, ReanimationType::REANIM_ENDURIAN, 0, 75, 3000, PlantSubClass::SUBCLASS_NORMAL, 0, "ENDURIAN"},
     {SeedType::SEED_IMP_PEAR, nullptr, ReanimationType::REANIM_IMP_PEAR, 0, 100, 3000, PlantSubClass::SUBCLASS_NORMAL, 0, "IMP_PEAR"},
+    {SeedType::SEED_AKEE, nullptr, ReanimationType::REANIM_AKEE, 0, 175, 750, PlantSubClass::SUBCLASS_SHOOTER, 300, "AKEE"},
 };
 
 void Plant::PlantInitialize(int theGridX, int theGridY, SeedType theSeedType, SeedType theImitaterType, int a6) {
@@ -217,6 +218,7 @@ int Plant::GetDamageRangeFlags(PlantWeapon thePlantWeapon) const {
         case SeedType::SEED_KERNELPULT:
         case SeedType::SEED_WINTERMELON:
         case SeedType::SEED_SPORESHROOM:
+        case SeedType::SEED_AKEE:
             return 13;
         case SeedType::SEED_POTATOMINE:
             return 77;
@@ -1560,6 +1562,9 @@ void Plant::Fire_Origin(Zombie *theTargetZombie, int theRow, PlantWeapon thePlan
         case SeedType::SEED_BLOOMERANG:
             aProjectileType = ProjectileType::PROJECTILE_BOOMERANG;
             break;
+        case SeedType::SEED_AKEE:
+            aProjectileType = ProjectileType::PROJECTILE_ACKEE;
+            break;
         default:
             break;
     }
@@ -1581,7 +1586,7 @@ void Plant::Fire_Origin(Zombie *theTargetZombie, int theRow, PlantWeapon thePlan
     } else if (mSeedType == SeedType::SEED_SEASHROOM) {
         aOriginX = mX + 45;
         aOriginY = mY + 63;
-    } else if (mSeedType == SeedType::SEED_CABBAGEPULT || mSeedType == SeedType::SEED_SPORESHROOM) {
+    } else if (mSeedType == SeedType::SEED_CABBAGEPULT || mSeedType == SeedType::SEED_SPORESHROOM || mSeedType == SeedType::SEED_AKEE) {
         aOriginX = mX + 5;
         aOriginY = mY - 12;
     } else if (mSeedType == SeedType::SEED_MELONPULT || mSeedType == SeedType::SEED_WINTERMELON) {
@@ -1790,7 +1795,7 @@ void Plant::Fire_Origin(Zombie *theTargetZombie, int theRow, PlantWeapon thePlan
     }
 
     if (mSeedType == SeedType::SEED_CABBAGEPULT || mSeedType == SeedType::SEED_KERNELPULT || mSeedType == SeedType::SEED_MELONPULT || mSeedType == SeedType::SEED_WINTERMELON
-        || mSeedType == SeedType::SEED_SPORESHROOM) {
+        || mSeedType == SeedType::SEED_SPORESHROOM || mSeedType == SeedType::SEED_AKEE) {
         float aRangeX = NAN, aRangeY = NAN;
         if (theTargetZombie) {
             Rect aZombieRect = theTargetZombie->GetZombieRect();
@@ -2334,6 +2339,7 @@ static int GetVSRefreshTimeDefault(SeedType theSeedType) {
         case SeedType::SEED_THREEPEATER:
         case SeedType::SEED_STARFRUIT:
         case SeedType::SEED_MELONPULT:
+        case SeedType::SEED_AKEE:
             return 1500;
         default:
             return GetPlantDefinition(theSeedType).mRefreshTime;
@@ -2655,7 +2661,7 @@ bool Plant::IsFlying(SeedType theSeedType) {
 
 bool Plant::IsLobber(SeedType theSeedType) {
     return theSeedType == SeedType::SEED_CABBAGEPULT || theSeedType == SeedType::SEED_KERNELPULT || theSeedType == SeedType::SEED_MELONPULT || theSeedType == SeedType::SEED_WINTERMELON
-        || theSeedType == SeedType::SEED_SPORESHROOM;
+        || theSeedType == SeedType::SEED_SPORESHROOM || theSeedType == SeedType::SEED_AKEE;
 }
 
 bool Plant::IsUpgrade(SeedType theSeedType) {
@@ -3059,7 +3065,7 @@ void Plant::UpdateShooting() {
         } else if (mState == PlantState::STATE_CACTUS_LOW) {
             Fire(nullptr, mRow, PlantWeapon::WEAPON_SECONDARY, nullptr);
         } else if (mSeedType == SeedType::SEED_CABBAGEPULT || mSeedType == SeedType::SEED_KERNELPULT || mSeedType == SeedType::SEED_MELONPULT || mSeedType == SeedType::SEED_WINTERMELON
-                   || mSeedType == SeedType::SEED_SPORESHROOM) {
+                   || mSeedType == SeedType::SEED_SPORESHROOM || mSeedType == SeedType::SEED_AKEE) {
             PlantWeapon aPlantWeapon = PlantWeapon::WEAPON_PRIMARY;
             if (mState == PlantState::STATE_KERNELPULT_BUTTER) {
                 Reanimation *aBodyReanim = mApp->ReanimationGet(mBodyReanimID);

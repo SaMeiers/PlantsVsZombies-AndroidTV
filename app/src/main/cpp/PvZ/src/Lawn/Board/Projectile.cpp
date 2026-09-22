@@ -36,6 +36,7 @@
 #include "PvZ/TodLib/Effect/Reanimator.h"
 
 #include <algorithm>
+#include <limits>
 #include <numbers>
 
 using namespace Sexy;
@@ -43,6 +44,11 @@ using namespace Sexy;
 namespace {
 constexpr int SPIKE_PIERCE_DAMAGE[MAX_PIERCE_HIT_COUNT] = {30, 15, 10};
 constexpr int TRAFFIC_CONE_FLIGHT_TICKS = 60;
+constexpr int ACKEE_MAX_HITS = 4;
+constexpr int ACKEE_BOUNCE_GRID_RANGE = 3;
+constexpr float ACKEE_BOUNCE_VELOCITY_Z = -6.0f;
+constexpr float ACKEE_BOUNCE_ACCELERATION_Z = 0.115f;
+constexpr int ACKEE_DAMAGE[ACKEE_MAX_HITS] = {60, 50, 40, 30};
 
 bool IsPiercingSpike(const Projectile *theProjectile) {
     return theProjectile->mApp->IsVSMode() && (VSSetupAddonWidget::msBalancePatchMode || Challenge::msVSShuffleMode) && theProjectile->mProjectileType == ProjectileType::PROJECTILE_SPIKE;
@@ -94,6 +100,154 @@ void ResetHitHistory(Projectile *theProjectile) {
     }
 }
 
+bool IsAckeeGridTarget(const GridItem *theGridItem) {
+    if (theGridItem == nullptr || theGridItem->mDead) {
+        return false;
+    }
+
+    if (theGridItem->mGridItemType == GridItemType::GRIDITEM_MP_TARGET_ZOMBIE) {
+        return theGridItem->mVSTargetZombieHealth > 0;
+    }
+    return theGridItem->mGridItemType == GridItemType::GRIDITEM_GRAVESTONE || theGridItem->mGridItemType == GridItemType::GRIDITEM_MP_BURIAL_MOUND;
+}
+
+bool IsAckeeGraveTarget(const GridItem *theGridItem) {
+    return theGridItem != nullptr && (theGridItem->mGridItemType == GridItemType::GRIDITEM_GRAVESTONE || theGridItem->mGridItemType == GridItemType::GRIDITEM_MP_BURIAL_MOUND);
+}
+
+struct AckeeTarget {
+    Zombie *mZombie = nullptr;
+    GridItem *mGridItem = nullptr;
+    float mDistanceSquared = std::numeric_limits<float>::max();
+};
+
+AckeeTarget FindAckeeBounceTarget(Projectile *theProjectile, float theSourceTargetX, int theSourceGridX, int theSourceRow) {
+    AckeeTarget aBestTarget;
+
+    Zombie *aZombie = nullptr;
+    while (theProjectile->mBoard->IterateZombies(aZombie)) {
+        if (aZombie->mRow != theSourceRow || aZombie->IsDeadOrDying() || !aZombie->EffectedByDamage(theProjectile->mDamageRangeFlags) || HasHitZombie(theProjectile, aZombie)) {
+            continue;
+        }
+
+        const float aDeltaX = aZombie->mPosX - theSourceTargetX;
+        const int aTargetGridX = theProjectile->mBoard->PixelToGridXKeepOnBoard(int(aZombie->mPosX), int(aZombie->mPosY));
+        if (aDeltaX <= 0.0f || aTargetGridX < theSourceGridX || aTargetGridX > theSourceGridX + ACKEE_BOUNCE_GRID_RANGE) {
+            continue;
+        }
+
+        const float aDistanceSquared = aDeltaX * aDeltaX;
+        if (aDistanceSquared < aBestTarget.mDistanceSquared) {
+            aBestTarget = {aZombie, nullptr, aDistanceSquared};
+        }
+    }
+
+    if (theProjectile->mApp->IsVSMode() && theProjectile->mCobTargetRow == 0) {
+        GridItem *aGridItem = nullptr;
+        while (theProjectile->mBoard->IterateGridItems(aGridItem)) {
+            if (aGridItem->mGridY != theSourceRow || !IsAckeeGridTarget(aGridItem) || HasHitGridItem(theProjectile, aGridItem)) {
+                continue;
+            }
+
+            const float aTargetX = float(theProjectile->mBoard->GridToPixelX(aGridItem->mGridX, aGridItem->mGridY));
+            if (aGridItem->mGridX < theSourceGridX || aGridItem->mGridX > theSourceGridX + ACKEE_BOUNCE_GRID_RANGE) {
+                continue;
+            }
+
+            const float aDeltaX = std::max(0.0f, aTargetX - theSourceTargetX);
+            const float aDistanceSquared = aDeltaX * aDeltaX;
+            const bool aPreferGraveInSameCell = aDistanceSquared == aBestTarget.mDistanceSquared && IsAckeeGraveTarget(aGridItem) && aBestTarget.mGridItem != nullptr
+                && aBestTarget.mGridItem->mGridItemType == GridItemType::GRIDITEM_MP_TARGET_ZOMBIE;
+            if (aDistanceSquared < aBestTarget.mDistanceSquared || aPreferGraveInSameCell) {
+                aBestTarget = {nullptr, aGridItem, aDistanceSquared};
+            }
+        }
+    }
+
+    return aBestTarget;
+}
+
+void StartAckeeBounce(Projectile *theProjectile, const AckeeTarget &theTarget) {
+    theProjectile->mReturning = true;
+    theProjectile->mMotionType = ProjectileMotion::MOTION_LOBBED;
+    theProjectile->mTargetZombieID = theTarget.mZombie ? theProjectile->mBoard->ZombieGetID(theTarget.mZombie) : ZombieID::ZOMBIEID_NULL;
+    // DataArray IDs use the upper 16 bits as a key.  Board initializes the
+    // grid-item key above INT_MAX, so a valid ID is negative when stored in
+    // this legacy int field.  Reserve zero as the null value and preserve the
+    // ID's bit pattern instead of using its sign as validity.
+    theProjectile->mLastPortalX = theTarget.mGridItem ? static_cast<int>(static_cast<uint32_t>(theProjectile->mBoard->GridItemGetID(theTarget.mGridItem))) : 0;
+
+    Rect aTargetRect = theTarget.mZombie ? theTarget.mZombie->GetZombieRect() : theTarget.mGridItem->GetItemRect();
+    const float aTargetX = float(aTargetRect.mX) + float(aTargetRect.mWidth - theProjectile->mWidth) * 0.5f;
+    const float aTargetY = float(aTargetRect.mY) + float(aTargetRect.mHeight) * 0.35f;
+    const float aFlightTime = -2.0f * ACKEE_BOUNCE_VELOCITY_Z / ACKEE_BOUNCE_ACCELERATION_Z;
+
+    theProjectile->mPosZ = 0.0f;
+    theProjectile->mVelX = (aTargetX - theProjectile->mPosX) / aFlightTime;
+    theProjectile->mVelY = (aTargetY - theProjectile->mPosY) / aFlightTime;
+    theProjectile->mVelZ = ACKEE_BOUNCE_VELOCITY_Z;
+    theProjectile->mAccZ = ACKEE_BOUNCE_ACCELERATION_Z;
+}
+
+void HandleAckeeImpact(Projectile *theProjectile, Zombie *theZombie, GridItem *theGridItem) {
+    if ((theZombie == nullptr && theGridItem == nullptr) || (theZombie && HasHitZombie(theProjectile, theZombie)) || (theGridItem && HasHitGridItem(theProjectile, theGridItem))) {
+        theProjectile->Die();
+        return;
+    }
+
+    const int aHitIndex = theProjectile->mPierceHitCount;
+    if (aHitIndex >= ACKEE_MAX_HITS) {
+        theProjectile->Die();
+        return;
+    }
+
+    float aSourceTargetX;
+    int aSourceGridX;
+    int aSourceRow;
+    if (theZombie) {
+        aSourceTargetX = theZombie->mPosX;
+        aSourceGridX = theProjectile->mBoard->PixelToGridXKeepOnBoard(int(theZombie->mPosX), int(theZombie->mPosY));
+        aSourceRow = theZombie->mRow;
+    } else {
+        aSourceTargetX = float(theProjectile->mBoard->GridToPixelX(theGridItem->mGridX, theGridItem->mGridY));
+        aSourceGridX = theGridItem->mGridX;
+        aSourceRow = theGridItem->mGridY;
+    }
+
+    theProjectile->PlayImpactSound(theZombie);
+    const int aDamage = ACKEE_DAMAGE[aHitIndex];
+    if (theZombie) {
+        theZombie->TakeDamage(aDamage, theProjectile->GetDamageFlags(theZombie));
+    } else {
+        const bool aHitGrave = theGridItem->mGridItemType == GridItemType::GRIDITEM_GRAVESTONE || theGridItem->mGridItemType == GridItemType::GRIDITEM_MP_BURIAL_MOUND;
+        theGridItem->TakeDamage(aDamage, 0U);
+        if (aHitGrave) {
+            // VS chains can damage one grave, then continue through zombies only.
+            theProjectile->mCobTargetRow = 1;
+        }
+    }
+    theProjectile->mApp->AddTodParticle(theProjectile->mPosX + 12.0f, theProjectile->mPosY + theProjectile->mPosZ + 12.0f, theProjectile->mRenderOrder + 1, ParticleEffect::PARTICLE_CABBAGE_SPLAT);
+
+    if (aHitIndex + 1 >= ACKEE_MAX_HITS) {
+        theProjectile->Die();
+        return;
+    }
+
+    if (theZombie) {
+        theProjectile->mHitZombieIDs[aHitIndex] = theProjectile->mBoard->ZombieGetID(theZombie);
+    } else {
+        theProjectile->mHitGridItemIDs[aHitIndex] = theProjectile->mBoard->GridItemGetID(theGridItem);
+    }
+    ++theProjectile->mPierceHitCount;
+
+    const AckeeTarget aNextTarget = FindAckeeBounceTarget(theProjectile, aSourceTargetX, aSourceGridX, aSourceRow);
+    if (aNextTarget.mZombie == nullptr && aNextTarget.mGridItem == nullptr) {
+        theProjectile->Die();
+        return;
+    }
+    StartAckeeBounce(theProjectile, aNextTarget);
+}
+
 } // namespace
 
 ProjectileDefinition gProjectileDefinition[] = {
@@ -121,6 +275,7 @@ ProjectileDefinition gExtendedProjectileDefinition[] = {
     {ProjectileType::PROJECTILE_BOOMERANG, 0, 20},
     {ProjectileType::PROJECTILE_TELEPORTATION, 0, 0},
     {ProjectileType::PROJECTILE_TRAFFIC_CONE, 0, 0},
+    {ProjectileType::PROJECTILE_ACKEE, 0, 60},
 };
 
 void Projectile::ProjectileInitialize(int theX, int theY, int theRenderOrder, int theRow, ProjectileType theProjectileType) {
@@ -165,6 +320,11 @@ void Projectile::ProjectileInitialize(int theX, int theY, int theRenderOrder, in
     } else if (mProjectileType == ProjectileType::PROJECTILE_TRAFFIC_CONE) {
         mRotation = RandRangeFloat(0.0f, 2 * std::numbers::pi);
         mRotationSpeed = RandRangeFloat(0.05f, 0.1f);
+    } else if (mProjectileType == ProjectileType::PROJECTILE_ACKEE) {
+        mRotation = 0.0f;
+        mRotationSpeed = 0.0f;
+        mLastPortalX = 0;
+        mCobTargetRow = 0;
     }
 
     mRelatedPlantID = PlantID::PLANTID_NULL;
@@ -414,6 +574,13 @@ void Projectile::UpdateMotion() {
         mFrame = mAnimCounter / mAnimTicksPerFrame;
     }
 
+    if (mProjectileType == ProjectileType::PROJECTILE_ACKEE && mReturning) {
+        UpdateAckeeMotion();
+        mX = int(mPosX);
+        mY = int(mPosY + mPosZ);
+        return;
+    }
+
     int aOldRow = mRow;
     float aOldY = mBoard->GetPosYBasedOnRow(mPosX, mRow);
     if (mProjectileType == ProjectileType::PROJECTILE_BOOMERANG) {
@@ -517,6 +684,42 @@ void Projectile::UpdateBoomerang() {
 
 void Projectile::UpdateNormalMotion() {
     old_Projectile_UpdateNormalMotion(this);
+}
+
+void Projectile::UpdateAckeeMotion() {
+    Zombie *aZombieTarget = mBoard->ZombieTryToGet(mTargetZombieID);
+    GridItem *aGridItemTarget = mLastPortalX != 0 ? mBoard->mGridItems.DataArrayTryToGet(static_cast<uint32_t>(mLastPortalX)) : nullptr;
+
+    Rect aTargetRect;
+    if (aZombieTarget != nullptr && !aZombieTarget->IsDeadOrDying() && aZombieTarget->EffectedByDamage(mDamageRangeFlags)) {
+        aTargetRect = aZombieTarget->GetZombieRect();
+    } else if (IsAckeeGridTarget(aGridItemTarget)) {
+        aTargetRect = aGridItemTarget->GetItemRect();
+    } else {
+        Die();
+        return;
+    }
+
+    mVelZ += mAccZ;
+    mPosX += mVelX;
+    mPosY += mVelY;
+    mPosZ += mVelZ;
+    mShadowY += mVelY;
+    mRow = mBoard->PixelToGridYKeepOnBoard(int(mPosX), int(mPosY));
+
+    if (mVelZ <= 0.0f || mPosZ < 0.0f) {
+        return;
+    }
+
+    mPosX = float(aTargetRect.mX) + float(aTargetRect.mWidth - mWidth) * 0.5f;
+    mPosY = float(aTargetRect.mY) + float(aTargetRect.mHeight) * 0.35f;
+    mPosZ = 0.0f;
+    mReturning = false;
+    if (aZombieTarget != nullptr) {
+        DoImpact(aZombieTarget);
+    } else {
+        DoImpactGridItem(aGridItemTarget);
+    }
 }
 
 
@@ -662,7 +865,8 @@ void Projectile::UpdateLobMotion() {
             aMinCollisionZ = 60.0f;
         } else if (mProjectileType == ProjectileType::PROJECTILE_MELON || mProjectileType == ProjectileType::PROJECTILE_WINTERMELON) {
             aMinCollisionZ = -35.0f;
-        } else if (mProjectileType == ProjectileType::PROJECTILE_CABBAGE || mProjectileType == ProjectileType::PROJECTILE_KERNEL || mProjectileType == ProjectileType::PROJECTILE_SPORE) {
+        } else if (mProjectileType == ProjectileType::PROJECTILE_CABBAGE || mProjectileType == ProjectileType::PROJECTILE_KERNEL || mProjectileType == ProjectileType::PROJECTILE_SPORE
+                   || mProjectileType == ProjectileType::PROJECTILE_ACKEE) {
             aMinCollisionZ = -30.0f;
         } else if (mProjectileType == ProjectileType::PROJECTILE_COBBIG) {
             aMinCollisionZ = -60.0f;
@@ -858,6 +1062,11 @@ void Projectile::DoImpact(Zombie *theZombie) {
 
         // 同一目标在去程和回程各只命中一次。
         aHitMask |= aTargetBit;
+        return;
+    }
+
+    if (mProjectileType == ProjectileType::PROJECTILE_ACKEE) {
+        HandleAckeeImpact(this, theZombie, nullptr);
         return;
     }
 
@@ -1081,6 +1290,11 @@ void Projectile::DoImpactGridItem(GridItem *theGridItem) {
 
         // 同一目标在去程和回程各只命中一次。
         aHitMask |= aTargetBit;
+        return;
+    }
+
+    if (mProjectileType == ProjectileType::PROJECTILE_ACKEE) {
+        HandleAckeeImpact(this, nullptr, theGridItem);
         return;
     }
 
@@ -1573,6 +1787,8 @@ void Projectile::Draw(Graphics *g) {
         aScaleX = 0.8f;
         aScaleY = 0.8f;
         aImage = IMAGE_REANIM_ZOMBIE_CONE1;
+    } else if (mProjectileType == ProjectileType::PROJECTILE_ACKEE) {
+        aImage = addonImages.IMAGE_PROJECTILEACKEE;
     }
 
     bool aMirror = false;
@@ -1584,6 +1800,13 @@ void Projectile::Draw(Graphics *g) {
         int aCelWidth = aImage->GetCelWidth();
         int aCelHeight = aImage->GetCelHeight();
         Rect aSrcRect(aCelWidth * mFrame, aCelHeight * aProjectileDef.mImageRow, aCelWidth, aCelHeight);
+        if (mProjectileType == ProjectileType::PROJECTILE_ACKEE) {
+            // The supplied PvZ2 texture uses a 200x200 canvas around a 25x53 projectile.
+            // Crop the transparent padding so rotation stays centered on the fruit itself.
+            aCelWidth = 25;
+            aCelHeight = 53;
+            aSrcRect = Rect(88, 25, aCelWidth, aCelHeight);
+        }
         if (FloatApproxEqual(mRotation, 0.0f) && FloatApproxEqual(aScaleX, 1.0f) && FloatApproxEqual(aScaleY, 1.0f)) {
             Rect aDestRect(0, 0, aCelWidth, aCelHeight);
             gProj.DrawImageMirror(aImage, aDestRect, aSrcRect, aMirror);
@@ -1654,6 +1877,7 @@ void Projectile::DrawShadow(Graphics *g) {
         case ProjectileType::PROJECTILE_MELON:
         case ProjectileType::PROJECTILE_WINTERMELON:
         case ProjectileType::PROJECTILE_SPORE:
+        case ProjectileType::PROJECTILE_ACKEE:
             aOffsetX += 3.0f;
             aOffsetY += 10.0f;
             aScale = 1.6f;
