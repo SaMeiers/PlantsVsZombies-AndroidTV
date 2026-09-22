@@ -3107,7 +3107,7 @@ void Zombie::UpdateGigaGargantuar() {
         if (!mMindControlled) {
             Plant *aPlant = nullptr;
             while (mBoard->IteratePlants(aPlant)) {
-                if (aPlant->NotOnGround() || aPlant->mRow != mRow) {
+                if (aPlant->NotOnGround() || aPlant->mRow != mRow || aPlant->IsLowProfile()) {
                     continue;
                 }
 
