@@ -24,6 +24,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
       # glad generates its loader at configure time with a Python template engine.
       - name: Install glad dependencies
         run: python -m pip install --disable-pip-version-check jinja2
@@ -37,8 +43,13 @@ jobs:
             libxi-dev libxss-dev libwayland-dev libxkbcommon-dev libegl1-mesa-dev \
             libgl1-mesa-dev libasound2-dev libpulse-dev
 
+      # CMake must use the interpreter jinja2 was installed into, not whichever
+      # Python it happens to find first.
       - name: Configure
-        run: cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -S desktop -B build/desktop
+          -DCMAKE_BUILD_TYPE=Release
+          -DPython3_EXECUTABLE=${{ steps.python.outputs.python-path }}
 
       - name: Build
         run: cmake --build build/desktop --config Release --target pvztv_player --parallel
