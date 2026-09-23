@@ -83,7 +83,7 @@ void f_ldexp(GuestCall &c) {
 
 void f_lrintf(GuestCall &c) {
     float x = c.argf(0);
-    c.set_result((uint32_t)std::lrintf(x));
+    c.set_result((uint32_t)std::lrint(x));
 }
 
 void f_memmem(GuestCall &c) {
@@ -319,8 +319,8 @@ void f_sincosf(GuestCall &c) {
     float x = c.argf(0);
     uint32_t sin_ptr = c.arg(1);
     uint32_t cos_ptr = c.arg(2);
-    float s = std::sinf(x);
-    float co = std::cosf(x);
+    float s = std::sin(x);
+    float co = std::cos(x);
     if (sin_ptr && c.in_bounds(sin_ptr, 4)) {
         uint32_t u;
         std::memcpy(&u, &s, 4);

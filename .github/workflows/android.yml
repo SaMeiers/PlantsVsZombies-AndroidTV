@@ -24,7 +24,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          submodules: recursive
+
+      # Only the runner's JIT is needed here; SDL/zlib/glad are for the desktop
+      # build, and SDL ships a Gradle wrapper that would trip wrapper validation.
+      - name: Check out the dynarmic submodule
+        run: git submodule update --init --recursive third_party/dynarmic
 
       - name: Checkout assets
         uses: actions/checkout@v7
