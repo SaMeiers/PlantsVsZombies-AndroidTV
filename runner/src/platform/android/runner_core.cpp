@@ -27,7 +27,6 @@
 uint32_t g_native_app_addr = 0;
 uint32_t g_process_works_fn = 0;
 uint32_t g_pipe_write_token = 0;
-bool g_guest_has_homura = false;
 
 namespace pvz_tv {
 
@@ -833,81 +832,21 @@ bool RunnerCore::init(const char *game_so_path, const char *data_dir) {
         }
     }
 
-    // No shutdown or ButtonWidget patches: the PC runner forced every ButtonWidget
-    // to fire on MouseUp, which also fired buttons that call LawnApp::SdkExit(),
-    // and then disabled shutdown to hide that. The game now quits only when asked
-    // to, and start() finishes the Activity when main() returns.
-    uint32_t so_base = image_.modules[0].base;
+    // Nothing in the loaded image is patched any more. The runner used to force
+    // every ButtonWidget to fire on MouseUp, which also fired buttons calling
+    // LawnApp::SdkExit(), and then disabled shutdown to hide that; the game now
+    // quits only when asked to, and start() finishes the Activity afterwards.
 
-
-    // Patches 7-9 are touch-UI workarounds from the PC runner, which has no
-    // libHomura. The guest libHomura inline-hooks every one of these functions
-    // (AwardScreen::MouseDown/MouseUp, SeedChooserScreen::ButtonDepress,
-    // GamepadControls::Draw, Board::DrawShovel) and implements the same fixes
-    // itself; patching on top of its hooks corrupts them -- the MouseUp patch
-    // lands on the hook's own `ldr.w pc` and crashes the AwardScreen.
-    g_guest_has_homura = false;
+    // The touch UI (AwardScreen, SeedChooserScreen, the shovel, the gamepad
+    // cursor) is libHomura's job: it inline-hooks those functions and fixes them
+    // there. The runner used to patch the same functions itself, which corrupted
+    // the mod's hooks, so it only checks that the mod is actually loaded.
+    bool has_homura = false;
     for (uint32_t i = 0; i < image_.module_count; ++i) {
-        if (strstr(image_.modules[i].name, "libHomura")) g_guest_has_homura = true;
+        if (strstr(image_.modules[i].name, "libHomura")) has_homura = true;
     }
-    if (g_guest_has_homura) {
-        LOGI("Guest libHomura present: skipping AwardScreen/SeedChooser/shovel patches (it hooks those itself)");
-    } else {
-    // 7. Fix AwardScreen click handling
-    // AwardScreen::MouseUp (0x00145928) -> unconditional StartButtonPressed()
-    image_.mem[so_base + 0x00145928] = 0x01;
-    image_.mem[so_base + 0x00145929] = 0xe0; // b #0x14592e
-    image_.mem[so_base + 0x0014592a] = 0x00;
-    image_.mem[so_base + 0x0014592b] = 0xbf; // nop
-
-    // AwardScreen::MouseDown (0x00143e6c) -> always play tap sound
-    image_.mem[so_base + 0x00143e6c] = 0x00;
-    image_.mem[so_base + 0x00143e6d] = 0xe0; // b #0x143e70
-    LOGI("Applied AwardScreen patches: unconditional MouseUp -> StartButtonPressed & tap sound.");
-
-    // SeedChooserScreen patches:
-    // Neutralize SeedChooserScreen::UpdateViewLawn (0x0014c7b8) so it never animates/moves the chooser
-    image_.mem[so_base + 0x0014c7b8] = 0x70; // bx lr (Thumb 0x4770)
-    image_.mem[so_base + 0x0014c7b9] = 0x47;
-
-    // Patch SeedChooserScreen::ButtonDepress (0x0014e7a6) to never trigger ViewLawn (id 102)
-    image_.mem[so_base + 0x0014e7a6] = 0x00; // nop (Thumb 0xbf00)
-    image_.mem[so_base + 0x0014e7a7] = 0xbf;
-
-    // Neutralize abort guards in SeedChooserScreen::ButtonDepress (0x0014e790, 0x0014e79a, 0x0014e7a2)
-    image_.mem[so_base + 0x0014e790] = 0x00; // b #0x14e794 (0xe000)
-    image_.mem[so_base + 0x0014e791] = 0xe0;
-    image_.mem[so_base + 0x0014e79a] = 0x00; // nop (0xbf00)
-    image_.mem[so_base + 0x0014e79b] = 0xbf;
-    image_.mem[so_base + 0x0014e7a2] = 0x00; // nop (0xbf00)
-    image_.mem[so_base + 0x0014e7a3] = 0xbf;
-    LOGI("Applied SeedChooserScreen patches: accept button clicks unconditionally!");
-
-    // 8. Shovel & Tool Cursor rendering in GamepadControls::Draw (0x001c0482)
-    const uint8_t patch_gamepad_draw[6] = { 0x06, 0x2a, 0x00, 0xf0, 0xed, 0xa9 };
-    memcpy(&image_.mem[so_base + 0x001c0482], patch_gamepad_draw, 6);
-
-    // 9. Hide Shovel in ShovelBank when shovel is picked up
-    const uint8_t shovel_stub[26] = {
-        0xd4, 0xf8, 0x38, 0xc2, // ldr.w ip, [r4, #0x238]
-        0xbc, 0xf1, 0x00, 0x0f, // cmp.w ip, #0
-        0x04, 0xd0,             // beq +8 -> jump to b.w
-        0xdc, 0xf8, 0x40, 0xc0, // ldr.w ip, [ip, #0x40]
-        0xbc, 0xf1, 0x06, 0x0f, // cmp.w ip, #6
-        0x08, 0xbf,             // it eq
-        0x70, 0x47,             // bxeq lr (skip drawing if holding shovel!)
-        0x9d, 0xf4, 0x9f, 0xbd  // b.w Graphics::DrawImage (0x00309958)
-    };
-    memcpy(&image_.mem[so_base + 0x0066be00], shovel_stub, 26);
-
-    // Patch Board::DrawShovel call site 1 (Normal level: 0x0015d152) -> bl stub
-    const uint8_t bl1[4] = { 0x0e, 0xf1, 0x55, 0xf6 };
-    memcpy(&image_.mem[so_base + 0x0015d152], bl1, 4);
-
-    // Patch Board::DrawShovel call site 2 (Conveyor level: 0x0015d1fe) -> bl stub
-    const uint8_t bl2[4] = { 0x0e, 0xf1, 0xff, 0xf5 };
-    memcpy(&image_.mem[so_base + 0x0015d1fe], bl2, 4);
-    LOGI("Applied Shovel patches: cursor rendering enabled & shovel bank hides when held!");
+    if (!has_homura) {
+        LOGE("libHomura.so is not loaded: the touch controls will not work");
     }
 
     cacheCheatSymbols();

@@ -22,8 +22,6 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-extern bool g_guest_has_homura; // runner_core.cpp
-
 namespace pvz_tv {
 
 // Host EGL and window state
