@@ -81,10 +81,12 @@ public:
 
     void AddTicks(uint64_t ticks) override {
         ticks_used += ticks;
-        if (jit) {
+#ifndef NDEBUG
+        if (jit) { // watchdog bookkeeping only; two atomic stores per block
             current_pc.store(jit->Regs()[15], std::memory_order_relaxed);
             current_lr.store(jit->Regs()[14], std::memory_order_relaxed);
         }
+#endif
     }
     uint64_t GetTicksRemaining() override { return 10000000; }
 
@@ -322,6 +324,7 @@ public:
     }
 
     void CallSVC(uint32_t swi) override {
+#ifndef NDEBUG
         ++svc_calls;
         current_swi.store(swi, std::memory_order_relaxed);
         if (jit) {
@@ -329,20 +332,19 @@ public:
             current_pc.store(jit->Regs()[15], std::memory_order_relaxed);
         }
         current_state.store("in_svc", std::memory_order_relaxed);
+#endif
 
         if (swi == 0) {
             uint32_t syscall_num = jit ? jit->Regs()[7] : 0;
             if (syscall_num == 0x000f0002) {
                 jit->Regs()[0] = 0;
-                current_state.store("running", std::memory_order_relaxed);
-                return;
+                    return;
             }
             uint32_t pc = jit ? jit->Regs()[15] : 0;
             bool is_trampoline_halt = (pc >= img->trampoline_base && pc < img->trampoline_base + 16);
             if (!is_trampoline_halt) {
                 jit->Regs()[0] = 0;
-                current_state.store("running", std::memory_order_relaxed);
-                return;
+                    return;
             }
             should_halt = true;
             jit->HaltExecution();
@@ -376,7 +378,6 @@ public:
 
             (*handlers)[swi](c);
 
-            current_state.store("running", std::memory_order_relaxed);
             if (c.returns) {
                 return_to_caller();
             }
@@ -385,7 +386,6 @@ public:
 
         const char *name = (img && swi < img->trampoline_count) ? img->trampoline_names[swi] : "unknown";
         LOGE("Unhandled SVC #%u: %s (lr=0x%08X)", swi, name, jit ? jit->Regs()[14] : 0);
-        current_state.store("running", std::memory_order_relaxed);
         jit->Regs()[0] = 0;
         return_to_caller();
     }
@@ -981,6 +981,8 @@ bool RunnerCore::start() {
         }
     });
 
+#ifndef NDEBUG
+    // Debug-only: one line per guest thread every 2 s, for diagnosing hangs.
     s_watchdog_running.store(true, std::memory_order_release);
     s_watchdog = std::thread([this]() {
         int tick = 0;
@@ -1004,16 +1006,18 @@ bool RunnerCore::start() {
             }
         }
     });
+#endif
 
     return true;
 }
 
-void RunnerCore::pause() {}
-void RunnerCore::resume() {}
+void RunnerCore::pause() { android_runner_set_paused(true); }
+void RunnerCore::resume() { android_runner_set_paused(false); }
 
 void RunnerCore::stop() {
     if (!running_) return;
     runtime_.shutdown_requested.store(true, std::memory_order_release);
+    android_runner_set_paused(false); // wake the frame loop if it is parked
     s_watchdog_running.store(false, std::memory_order_release);
     if (s_main_env && s_main_jit) {
         s_main_env->should_halt = true;

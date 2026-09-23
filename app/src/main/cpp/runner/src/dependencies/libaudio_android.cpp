@@ -24,6 +24,7 @@ static SLAndroidSimpleBufferQueueItf g_playerBufferQueue = nullptr;
 static std::mutex g_audio_lock;
 static std::condition_variable g_audio_cv;
 static std::atomic<bool> g_audio_inited{false};
+static std::atomic<bool> g_audio_paused{false};
 static uint32_t g_bytes_per_sec = 176400;
 
 static constexpr int kNumBuffers = 16;
@@ -133,7 +134,16 @@ static void ag_audio_init(GuestCall &c) {
 }
 
 static void ag_audio_is_paused(GuestCall &c) {
-    c.set_result(0);
+    c.set_result(g_audio_paused.load() ? 1 : 0);
+}
+
+// Called when the activity is paused/resumed, so the game is not heard (and
+// does not keep an active OpenSL player) while it is in the background.
+void android_runner_set_audio_paused(bool paused) {
+    g_audio_paused.store(paused);
+    if (!g_playerPlay) return;
+    (*g_playerPlay)->SetPlayState(g_playerPlay,
+                                  paused ? SL_PLAYSTATE_PAUSED : SL_PLAYSTATE_PLAYING);
 }
 
 static void ag_audio_write(GuestCall &c) {

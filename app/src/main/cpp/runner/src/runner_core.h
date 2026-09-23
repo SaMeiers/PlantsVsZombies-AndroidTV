@@ -29,6 +29,9 @@ void android_runner_inspect_pending_works(GuestCall &c, uint32_t native_app, uin
 void android_runner_show_text_dialog(int mode, const std::string &title, const std::string &hint,
                                      const std::string &initial);
 void android_runner_hide_text_dialog();
+// Activity lifecycle: park the guest frame loop and silence audio in the background.
+RUNNER_API void android_runner_set_paused(bool paused);
+void android_runner_set_audio_paused(bool paused);
 // The guest's main() returned (the player quit): close the app.
 void android_runner_finish_activity();
 

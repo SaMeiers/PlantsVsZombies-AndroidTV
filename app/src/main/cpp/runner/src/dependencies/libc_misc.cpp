@@ -396,8 +396,6 @@ void c_mmap(GuestCall &c) {
         return;
     }
 
-    c.log("[+] [libc] mmap(addr=0x%08X, len=%u (aligned=%u), prot=0x%x, flags=0x%x) -> 0x%08X",
-          addr, length, aligned_len, prot, flags, alloc);
     c.set_result(alloc);
 }
 

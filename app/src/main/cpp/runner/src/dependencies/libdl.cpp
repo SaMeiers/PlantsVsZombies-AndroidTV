@@ -79,7 +79,8 @@ void dl_sym(GuestCall &c) {
         }
     }
 
-    c.log("[libdl] dlsym(0x%08X, \"%s\") -> 0x%08X [caller lr=0x%08X]", handle, sym_name.c_str(), addr, c.lr());
+    if (addr == 0) // a resolved symbol is the normal case and there are thousands of them
+        c.log("[libdl] dlsym(0x%08X, \"%s\") NOT FOUND [caller lr=0x%08X]", handle, sym_name.c_str(), c.lr());
     c.set_result(addr);
 }
 

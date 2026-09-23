@@ -53,6 +53,20 @@ struct QueuedInputEvent {
 static std::mutex g_input_queue_lock;
 static std::vector<QueuedInputEvent> g_input_queue;
 
+// Activity lifecycle: while paused the guest's frame loop parks inside
+// eglSwapBuffers instead of spinning through frames nobody sees.
+static std::mutex g_pause_lock;
+static std::condition_variable g_pause_cv;
+static std::atomic<bool> g_paused{false};
+
+void android_runner_set_paused(bool paused) {
+    {
+        std::lock_guard<std::mutex> lk(g_pause_lock);
+        g_paused.store(paused, std::memory_order_release);
+    }
+    g_pause_cv.notify_all();
+}
+
 // Called from JNI (UI thread)
 void android_runner_set_window(ANativeWindow *window) {
     LOGI("android_runner_set_window(%p)", window);
@@ -428,6 +442,41 @@ static void dispatch_pointer_event(GuestCall &c, uint32_t handleEvents, uint32_t
     c.call(handleEvents, args, 2);
 }
 
+// AGEvent type 8 -> AndroidAppDriver::HandleFocusChangedEvent, which is how the
+// game learns it lost focus and pauses itself.
+static void dispatch_focus_event(GuestCall &c, uint32_t handleEvents, uint32_t appDriver,
+                                 uint32_t s_event_buf, bool focused) {
+    for (uint32_t off = 0; off < 0x30; off += 4) c.write32(s_event_buf + off, 0);
+    c.write32(s_event_buf + 0x00, 8);
+    c.write32(s_event_buf + 0x10, focused ? 1 : 0);
+    uint32_t args[2] = { s_event_buf, appDriver };
+    c.call(handleEvents, args, 2);
+}
+
+// Parks the guest frame loop while the activity is paused. Called from
+// eglSwapBuffers, i.e. on the guest thread and between frames, so the game is
+// stopped at a point where it expects to wait for the display anyway.
+static void park_while_paused(GuestCall &c, uint32_t handleEvents, uint32_t appDriver,
+                              uint32_t s_event_buf) {
+    if (!g_paused.load(std::memory_order_acquire)) return;
+
+    LOGI("Paused: parking the guest frame loop");
+    dispatch_focus_event(c, handleEvents, appDriver, s_event_buf, false);
+    android_runner_set_audio_paused(true);
+
+    {
+        std::unique_lock<std::mutex> lk(g_pause_lock);
+        g_pause_cv.wait(lk, [&] {
+            return !g_paused.load(std::memory_order_acquire) ||
+                   c.rt->shutdown_requested.load(std::memory_order_acquire);
+        });
+    }
+
+    android_runner_set_audio_paused(false);
+    dispatch_focus_event(c, handleEvents, appDriver, s_event_buf, true);
+    LOGI("Resumed");
+}
+
 static void dispatch_key_event(GuestCall &c, uint32_t handleEvents, uint32_t appDriver, uint32_t s_event_buf,
                                uint32_t action, int keyCode) {
     c.write32(s_event_buf + 0x00, action); // 0 = KEY_DOWN, 1 = KEY_UP
@@ -522,6 +571,7 @@ void egl_swap_buffers(GuestCall &c) {
     }
 
     if (appDriver && handleEvents) {
+        park_while_paused(c, handleEvents, appDriver, s_event_buf);
         deliver_pending_texts(c, handleEvents, appDriver, s_event_buf);
 
         std::vector<QueuedInputEvent> events;
@@ -538,101 +588,16 @@ void egl_swap_buffers(GuestCall &c) {
         float scaleX = 1280.0f / (float)winW;
         float scaleY = 720.0f / (float)winH;
 
-        uint32_t board = lawnApp ? c.read32(lawnApp + 0x8a0) : 0;
-        uint32_t awardScreen = lawnApp ? c.read32(lawnApp + 0x8cc) : 0;
-        uint32_t seedChooser = lawnApp ? c.read32(lawnApp + 0x8c4) : 0;
-        int gameScene = lawnApp ? (int)c.read32(lawnApp + 0x900) : 0;
-        int daveMsg = lawnApp ? (int)c.read32(lawnApp + 0x954) : -1;
-        bool boardPaused = (board != 0) ? (c.read8(board + 0x259) != 0) : false;
-        int tutorialState = (board != 0) ? (int)c.read32(board + 0x56a0) : 0;
-        bool inShovelTutorial = (tutorialState >= 15 && tutorialState <= 17);
-        bool is_gameplay = (board != 0) && !boardPaused && (awardScreen == 0) &&
-                           ((gameScene == 3 /* SCENE_PLAYING */) || inShovelTutorial) &&
-                           (daveMsg == -1);
-
-        static bool s_touch_down = false;
-        static float s_down_x = 0.0f;
-        static float s_down_y = 0.0f;
-        static float s_last_x = 0.0f;
-        static float s_last_y = 0.0f;
-        static bool s_is_dragging = false;
-
+        // The game (with libHomura's touch mod) handles touch itself, so the
+        // events go through as they arrive, like the original Java side sends
+        // them -- no drag deadzone and no poking at LawnApp internals.
         for (const auto &ev : events) {
             if (ev.type == QueuedInputEvent::TOUCH) {
-                float mouseX = ev.x * scaleX;
-                float mouseY = ev.y * scaleY;
-                if (mouseX < 0.0f) mouseX = 0.0f;
-                if (mouseX > 1280.0f) mouseX = 1280.0f;
-                if (mouseY < 0.0f) mouseY = 0.0f;
-                if (mouseY > 720.0f) mouseY = 720.0f;
-
-                if (ev.action == 2 /* POINTER_DOWN */) {
-                    s_touch_down = true;
-                    s_down_x = mouseX;
-                    s_down_y = mouseY;
-                    s_last_x = mouseX;
-                    s_last_y = mouseY;
-                    s_is_dragging = false;
-                    dispatch_pointer_event(c, handleEvents, appDriver, s_event_buf,
-                                           2, mouseX, mouseY, 1.0f, ev.pointer_id);
-                } else if (ev.action == 3 /* POINTER_MOVE */) {
-                    if (is_gameplay) {
-                        dispatch_pointer_event(c, handleEvents, appDriver, s_event_buf,
-                                               3, mouseX, mouseY, s_touch_down ? 1.0f : 0.0f, ev.pointer_id);
-                        if (s_touch_down) {
-                            s_last_x = mouseX;
-                            s_last_y = mouseY;
-                            s_is_dragging = true;
-                        }
-                    } else if (s_touch_down) {
-                        float dx = mouseX - s_down_x;
-                        float dy = mouseY - s_down_y;
-                        float dist = std::sqrt(dx * dx + dy * dy);
-
-                        if (!s_is_dragging) {
-                            // Deadzone: small tremors (< 8px) do NOT dispatch POINTER_MOVE in menus/dialogs/AwardScreen,
-                            // keeping [appDriver + 0x116] intact so button taps complete cleanly!
-                            if (dist >= 8.0f) {
-                                s_is_dragging = true;
-                                s_last_x = mouseX;
-                                s_last_y = mouseY;
-                                dispatch_pointer_event(c, handleEvents, appDriver, s_event_buf,
-                                                       3, mouseX, mouseY, 1.0f, ev.pointer_id);
-                            }
-                        } else {
-                            s_last_x = mouseX;
-                            s_last_y = mouseY;
-                            dispatch_pointer_event(c, handleEvents, appDriver, s_event_buf,
-                                                   3, mouseX, mouseY, 1.0f, ev.pointer_id);
-                        }
-                    }
-                } else if (ev.action == 4 /* POINTER_UP */ || ev.action == 5 /* POINTER_CANCEL */) {
-                    if (s_touch_down) {
-                        float upX = s_is_dragging ? s_last_x : s_down_x;
-                        float upY = s_is_dragging ? s_last_y : s_down_y;
-
-                        // Ensure appDriver + 0x116 is 0 so PopCap never cancels tap on mouse/touch up
-                        c.write8(appDriver + 0x116, 0);
-
-                        dispatch_pointer_event(c, handleEvents, appDriver, s_event_buf,
-                                               4, upX, upY, 0.0f, ev.pointer_id);
-                        s_touch_down = false;
-                        s_is_dragging = false;
-
-                        // With libHomura its AwardScreen::MouseUp hook already calls
-                        // StartButtonPressed(); a second call would act on a screen
-                        // the first one may have killed.
-                        if (awardScreen != 0 && !g_guest_has_homura) {
-                            LOGI("[AwardScreen] Touch up -> StartButtonPressed()");
-                            uint32_t sargs[1] = { awardScreen };
-                            c.call(gameMainBase + 0x00145715, sargs, 1); // StartButtonPressed()
-                        }
-                    } else {
-                        c.write8(appDriver + 0x116, 0);
-                        dispatch_pointer_event(c, handleEvents, appDriver, s_event_buf,
-                                               4, mouseX, mouseY, 0.0f, ev.pointer_id);
-                    }
-                }
+                float mouseX = std::fmin(std::fmax(ev.x * scaleX, 0.0f), 1280.0f);
+                float mouseY = std::fmin(std::fmax(ev.y * scaleY, 0.0f), 720.0f);
+                float pressure = (ev.action == 4 || ev.action == 5) ? 0.0f : 1.0f;
+                dispatch_pointer_event(c, handleEvents, appDriver, s_event_buf,
+                                       (uint32_t)ev.action, mouseX, mouseY, pressure, ev.pointer_id);
             } else if (ev.type == QueuedInputEvent::KEY) {
                 dispatch_key_event(c, handleEvents, appDriver, s_event_buf,
                                    ev.action, ev.key_code);
