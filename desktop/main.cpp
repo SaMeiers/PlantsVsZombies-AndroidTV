@@ -717,12 +717,44 @@ void setup_transmension_bridge(pvz2_elf_image_t *img, pvz_tv::GuestRuntime *rt) 
            nativeBase + 0x4f014, bridgeApp, nativeApp, g_process_works_fn);
 }
 
+// Where this executable lives, so the player can find the game next to itself
+// instead of depending on the directory it happens to be started from.
+static std::filesystem::path executable_directory(const char *argv0) {
+#if defined(_WIN32)
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) return std::filesystem::path(buf).parent_path();
+#else
+    std::error_code ec;
+    auto self = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (!ec) return self.parent_path();
+#endif
+    std::error_code ec2;
+    auto from_argv = std::filesystem::absolute(argv0 ? argv0 : ".", ec2);
+    return ec2 ? std::filesystem::current_path() : from_argv.parent_path();
+}
+
 int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
     printf("=========================================\n");
     printf("   PvZ-TV-Native: Android TV 64-bit Port \n");
     printf("=========================================\n\n");
+
+    // An explicit path is resolved against the caller's directory; everything
+    // else (assets, saves, the guest libraries) lives next to the executable.
+    std::filesystem::path explicitSo;
+    if (argc > 1) {
+        std::error_code ec;
+        explicitSo = std::filesystem::absolute(argv[1], ec);
+    }
+    const std::filesystem::path exeDir = executable_directory(argv[0]);
+    std::error_code chdirEc;
+    std::filesystem::current_path(exeDir, chdirEc);
+    if (chdirEc) {
+        fprintf(stderr, "[-] Could not enter %s: %s\n",
+                exeDir.string().c_str(), chdirEc.message().c_str());
+    }
 
     pvz2_config_load(nullptr, "./");
 #if defined(_WIN32)
@@ -783,16 +815,35 @@ int main(int argc, char *argv[]) {
     pvz2_surface_set(winWidth, winHeight);
 
     // Load ARM32 SOs
-    // The guest libraries are not shipped with the player: point it at a
-    // directory holding libGameMain.so and the rest (libHomura.so,
-    // libGameRegister.so, libnative_code.so, libfmodex.so), which the loader
-    // picks up from the same folder.
-    const char *soPath = (argc > 1) ? argv[1] : "libGameMain.so";
-    if (!std::filesystem::exists(soPath)) {
-        fprintf(stderr, "[-] %s not found.\n    Usage: %s [path/to/libGameMain.so]\n",
-                soPath, argv[0]);
+    // The guest libraries are not shipped with the player. They are looked up
+    // next to the executable, either loose or in libs/; the loader then picks
+    // up libHomura.so and the others from that same folder.
+    std::string soPathStorage;
+    if (!explicitSo.empty()) {
+        soPathStorage = explicitSo.string();
+    } else {
+        for (const char *dir : { ".", "libs" }) {
+            auto candidate = std::filesystem::path(dir) / "libGameMain.so";
+            if (std::filesystem::exists(candidate)) {
+                soPathStorage = candidate.string();
+                break;
+            }
+        }
+    }
+
+    if (soPathStorage.empty() || !std::filesystem::exists(soPathStorage)) {
+        char message[512];
+        snprintf(message, sizeof(message),
+                 "libGameMain.so was not found.\n\n"
+                 "Put the game's libraries (libGameMain.so, libHomura.so,\n"
+                 "libGameRegister.so, libnative_code.so, libfmodex.so) and its\n"
+                 "assets folder next to this program, in:\n\n%s",
+                 exeDir.string().c_str());
+        fprintf(stderr, "[-] %s\n", message);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PvZ TV", message, g_sdl_window);
         return 1;
     }
+    const char *soPath = soPathStorage.c_str();
 
     printf("[*] Target SO: %s\n", soPath);
 
