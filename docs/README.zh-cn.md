@@ -18,11 +18,14 @@
     * NDK v27.3.13750724 (r27d)
     * CMake v3.20+
 
-- 克隆仓库.
+- **连同子模块一起**克隆仓库 (子模块包含 dynarmic, SDL, zlib 和 glad).
     ```sh
-    git clone https://github.com/ZombieYetis/PlantsVsZombies-AndroidTV.git
+    git clone --recursive https://github.com/ZombieYetis/PlantsVsZombies-AndroidTV.git
     cd PlantsVsZombies-AndroidTV
     ```
+    > 如果克隆时忘了加 `--recursive`, 执行 `git submodule update --init --recursive`.
+    > 若想使用本地已有的依赖副本, 配置时加上 `-DPVZTV_DEPS_DIR=<目录>`
+    > (详见 [`third_party/CMakeLists.txt`](/third_party/CMakeLists.txt)).
 
 - 复制 assets 文件到路径 `PlantsVsZombies-AndroidTV/app/src/main/assets/` 下.
     > 需要资源文件请联系仓库作者.
@@ -41,6 +44,19 @@
     keyAlias=myKeyAlias
     storeFile=myStoreFileLocation
     ```
+
+## 桌面版
+
+arm64 构建依靠 runner 执行游戏原本的 32 位 ARM 库, 同一份 runner 也能在 PC 上运行它们,
+只是把 Android 系统库换成了 SDL2.
+
+```sh
+cmake -S desktop -B build/desktop
+cmake --build build/desktop --config Release
+```
+
+在放有游戏 `assets/` 与 guest 库的目录中运行生成的 `pvztv_player`;
+它加载了什么以及为什么这样做, 详见[架构说明](./ARCHITECTURE.zh-cn.md).
 
 ## 参与贡献
 

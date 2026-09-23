@@ -146,22 +146,29 @@ dependencies {
     implementation 'androidx.annotation:annotation:1.9.1'
 }
 
+// The game's assets are not in this repository. If you have a packaged build of
+// the game, point `pvztvBaseApk` at it (in gradle.properties or with
+// -PpvztvBaseApk=<path>) and its assets are unpacked into src/main/assets once.
 tasks.register("ensureAssets") {
     doLast {
         def assetsDir = file("src/main/assets")
-        if (!assetsDir.exists() || assetsDir.list().length == 0) {
-            println "Extracting assets from base APK..."
-            def baseApk = rootProject.file("PvZ-TV-v1.1.5-260902-release.apk")
-            if (baseApk.exists()) {
-                copy {
-                    from zipTree(baseApk)
-                    into "src/main"
-                    include "assets/**"
-                }
-                println "Assets extracted successfully!"
-            } else {
-                println "Base APK not found at ${baseApk.absolutePath}"
-            }
+        if (assetsDir.exists() && assetsDir.list().length > 0) return
+
+        def apkPath = project.findProperty("pvztvBaseApk")
+        if (apkPath == null) {
+            logger.lifecycle("No assets in ${assetsDir}; set -PpvztvBaseApk=<apk> to unpack them from a packaged build.")
+            return
+        }
+        def baseApk = file(apkPath)
+        if (!baseApk.exists()) {
+            logger.warn("pvztvBaseApk not found: ${baseApk.absolutePath}")
+            return
+        }
+        logger.lifecycle("Extracting assets from ${baseApk.name}...")
+        copy {
+            from zipTree(baseApk)
+            into "src/main"
+            include "assets/**"
         }
     }
 }

@@ -51,85 +51,21 @@ if (ANDROID_ABI STREQUAL "armeabi-v7a")
             ${OpenSLES-lib}
     )
 
-else() # arm64-v8a: Dynarmic ARM32 translation runner + 64-bit Homura bridge
-    set(DYNARMIC_FRONTENDS "A32" CACHE STRING "" FORCE)
-    set(DYNARMIC_TESTS OFF CACHE BOOL "" FORCE)
-    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-    set(Boost_INCLUDE_DIR "C:/proyectos/pvzpc-deps/boost")
-    add_subdirectory("C:/proyectos/pvzpc-deps/dynarmic" ${CMAKE_BINARY_DIR}/dynarmic EXCLUDE_FROM_ALL)
-    if (TARGET fmt)
-        target_compile_options(fmt PUBLIC "-DFMT_CONSTEVAL=")
-    endif()
+else() # arm64-v8a: the guest libraries run on the shared Dynarmic runner
+    # Repository root, so this file does not care where it is checked out.
+    get_filename_component(PVZTV_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../.." ABSOLUTE)
 
-    set(RUNNER_SRCS
-        runner/src/elf32/elf32_loader.c
-        runner/src/runtime/guest_runtime.cpp
-        runner/src/runtime/guest_heap.cpp
-        runner/src/runtime/guest_zlib.cpp
-        runner/src/surface.cpp
-        runner/src/config.cpp
-        runner/src/dependencies/dependency.cpp
-        runner/src/dependencies/libandroid.cpp
-        runner/src/dependencies/libaudio_android.cpp
-        runner/src/dependencies/libc_ctype.cpp
-        runner/src/dependencies/libc_extra.cpp
-        runner/src/dependencies/libc_locale.cpp
-        runner/src/dependencies/libc_misc.cpp
-        runner/src/dependencies/libc_pthread.cpp
-        runner/src/dependencies/libc_socket.cpp
-        runner/src/dependencies/libc_stdio.cpp
-        runner/src/dependencies/libc_stdlib.cpp
-        runner/src/dependencies/libc_string.cpp
-        runner/src/dependencies/libc_time.cpp
-        runner/src/dependencies/libc_unistd.cpp
-        runner/src/dependencies/libc_wchar.cpp
-        runner/src/dependencies/libdl.cpp
-        runner/src/dependencies/libegl_android.cpp
-        runner/src/dependencies/libgles_android.cpp
-        runner/src/dependencies/liblog.cpp
-        runner/src/dependencies/libm.cpp
-        runner/src/dependencies/libstdcxx.cpp
-        runner/src/dependencies/libz.cpp
-        runner/src/dependencies/vfs.cpp
-        runner/src/runner_core.cpp
-        runner/src/runner_jni.cpp
-    )
+    add_subdirectory("${PVZTV_ROOT}/third_party" "${CMAKE_BINARY_DIR}/third_party")
+    add_subdirectory("${PVZTV_ROOT}/runner" "${CMAKE_BINARY_DIR}/runner")
 
-    add_library(native_code SHARED ${RUNNER_SRCS})
-    target_include_directories(native_code PRIVATE
-        runner/include
-        runner/src
-    )
+    # pvztv_runner builds as libnative_code.so here (see runner/CMakeLists.txt).
 
-    find_library(android-lib android)
-    find_library(EGL-lib EGL)
-    find_library(GLESv1-lib GLESv1_CM)
-    find_library(GLESv2-lib GLESv2)
     find_library(log-lib log)
-    find_library(OpenSLES-lib OpenSLES)
-    find_library(z-lib z)
-
-    target_link_libraries(native_code PRIVATE
-        dynarmic
-        ${android-lib}
-        ${EGL-lib}
-        ${GLESv1-lib}
-        ${GLESv2-lib}
-        ${log-lib}
-        ${OpenSLES-lib}
-        ${z-lib}
-    )
-
-    add_library(Homura SHARED runner/src/homura_bridge.cpp)
+    add_library(Homura SHARED "${PVZTV_ROOT}/runner/src/platform/android/homura_bridge.cpp")
     target_include_directories(Homura PRIVATE
-        runner/include
-        runner/src
         Homura/include
         PvZ/include
-        C:/proyectos/pvzpc-deps/dynarmic/src
+        "${PVZTV_DYNARMIC_SRC_DIR}"
     )
-    target_link_libraries(Homura PRIVATE
-        native_code
-        ${log-lib}
-    )
+    target_link_libraries(Homura PRIVATE pvztv_runner ${log-lib})
 endif()

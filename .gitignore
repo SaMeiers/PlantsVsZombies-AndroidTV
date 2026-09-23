@@ -36,3 +36,15 @@ keystore.properties
 
 # 资源文件
 app/src/main/assets/
+
+# Desktop build output
+build/
+
+# Game data and packaged builds: these are not redistributable, see docs/
+assets/
+app/src/main/assets/
+*.apk
+*.obb
+
+# Ad-hoc screenshots from manual testing
+phone_screen*.png

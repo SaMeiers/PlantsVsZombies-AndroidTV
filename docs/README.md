@@ -18,11 +18,14 @@ A mod of _Plants vs. Zombies_ Android TV version.
     * NDK v27.3.13750724 (r27d)
     * CMake v3.20+
 
-- Clone the repository.
+- Clone the repository **with its submodules** (they carry dynarmic, SDL, zlib and glad).
     ```sh
-    git clone https://github.com/ZombieYetis/PlantsVsZombies-AndroidTV.git
+    git clone --recursive https://github.com/ZombieYetis/PlantsVsZombies-AndroidTV.git
     cd PlantsVsZombies-AndroidTV
     ```
+    > Already cloned without `--recursive`? Run `git submodule update --init --recursive`.
+    > To build against dependency copies you already have on disk, configure with
+    > `-DPVZTV_DEPS_DIR=<dir>` (see [`third_party/CMakeLists.txt`](/third_party/CMakeLists.txt)).
 
 - Copy assets files to the path `PlantsVsZombies-AndroidTV/app/src/main/assets/`.
     > If you need resource files, please contact the repository author.
@@ -42,6 +45,21 @@ A mod of _Plants vs. Zombies_ Android TV version.
     keyAlias=myKeyAlias
     storeFile=myStoreFileLocation
     ```
+
+## Desktop player
+
+The same runner that lets the arm64 build execute the game's original 32-bit ARM
+libraries also runs them on a PC, through SDL2 instead of the Android system
+libraries.
+
+```sh
+cmake -S desktop -B build/desktop
+cmake --build build/desktop --config Release
+```
+
+Run the resulting `pvztv_player` from a directory holding the game's `assets/`
+and the guest libraries; see [Architecture](./ARCHITECTURE.md) for what it loads
+and why.
 
 ## Contributing
 
