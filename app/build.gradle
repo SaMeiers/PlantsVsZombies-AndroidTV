@@ -40,7 +40,7 @@ android {
         versionNameSuffix = "-" + gitCommitDate
 
         ndk {
-            abiFilters "armeabi-v7a"
+            abiFilters "armeabi-v7a", "arm64-v8a"
         }
 
         buildConfigField("String", "GIT_BRANCH", "\"${gitBranch}\"")
@@ -145,3 +145,26 @@ dependencies {
     implementation fileTree("dir": "libs", "include": ["*.jar"])
     implementation 'androidx.annotation:annotation:1.9.1'
 }
+
+tasks.register("ensureAssets") {
+    doLast {
+        def assetsDir = file("src/main/assets")
+        if (!assetsDir.exists() || assetsDir.list().length == 0) {
+            println "Extracting assets from base APK..."
+            def baseApk = rootProject.file("PvZ-TV-v1.1.5-260902-release.apk")
+            if (baseApk.exists()) {
+                copy {
+                    from zipTree(baseApk)
+                    into "src/main"
+                    include "assets/**"
+                }
+                println "Assets extracted successfully!"
+            } else {
+                println "Base APK not found at ${baseApk.absolutePath}"
+            }
+        }
+    }
+}
+
+preBuild.dependsOn "ensureAssets"
+

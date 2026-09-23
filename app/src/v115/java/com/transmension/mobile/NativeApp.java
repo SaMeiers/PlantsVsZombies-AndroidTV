@@ -71,16 +71,24 @@ public class NativeApp {
                 if (i < length) {
                     String libPath = libPaths[i];
                     File fullPath = new File(libPath, fullName);
+                    if (!fullPath.exists()) {
+                        i++;
+                        continue;
+                    }
                     if (verbose) {
                         try {
                             Log.i("jni", "Loading " + fullName + " from " + libPath);
                         } catch (Throwable th) {
-                            i++;
                         }
                     }
-                    System.load(fullPath.getAbsolutePath());
-                    loaded = true;
-                    break;
+                    try {
+                        System.load(fullPath.getAbsolutePath());
+                        loaded = true;
+                        break;
+                    } catch (Throwable th) {
+                        Log.w("jni", "Failed to load " + fullPath + ": " + th.getMessage());
+                        i++;
+                    }
                 }
                 break;
             }

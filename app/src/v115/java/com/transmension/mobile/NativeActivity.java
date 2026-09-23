@@ -115,7 +115,7 @@ public class NativeActivity extends Activity {
 
     @Override // android.app.Activity
     protected void onCreate(Bundle savedInstanceState) {
-
+        GuestLibsExtractor.extractIfNeeded(this);
 
         setUI();
 

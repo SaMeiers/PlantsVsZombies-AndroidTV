@@ -489,6 +489,7 @@ public class NativeView extends SurfaceView implements SurfaceHolder.Callback2, 
 
                     builder.setNegativeButton("Cancel", (dialog, which) -> {
                         Log.i(TAG, "showTextInputDialog2: Cancel");
+                        if (isAlive()) onTextInputNative2(""); // empty = cancelled (ignored by libHomura)
                     });
 
                     mTextInputDialog = builder.create();
@@ -496,6 +497,7 @@ public class NativeView extends SurfaceView implements SurfaceHolder.Callback2, 
                     // 用户点返回键/点外部取消
                     mTextInputDialog.setOnCancelListener(d -> {
                         Log.i(TAG, "showTextInputDialog2: onCancel");
+                        if (isAlive()) onTextInputNative2("");
                     });
 
                     mTextInputDialog.setOnDismissListener(d -> {
