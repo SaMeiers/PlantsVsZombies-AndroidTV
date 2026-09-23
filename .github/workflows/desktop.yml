@@ -49,7 +49,7 @@ jobs:
         run: >
           cmake -S desktop -B build/desktop
           -DCMAKE_BUILD_TYPE=Release
-          -DPython3_EXECUTABLE=${{ steps.python.outputs.python-path }}
+          -DPython_EXECUTABLE=${{ steps.python.outputs.python-path }}
 
       - name: Build
         run: cmake --build build/desktop --config Release --target pvztv_player --parallel
