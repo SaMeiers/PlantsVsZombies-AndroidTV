@@ -50,6 +50,9 @@
 arm64 构建依靠 runner 执行游戏原本的 32 位 ARM 库, 同一份 runner 也能在 PC 上运行它们,
 只是把 Android 系统库换成了 SDL2.
 
+需要 CMake 3.20+, 支持 C++20 的编译器, 以及带 `jinja2` 的 Python
+(glad 在配置阶段生成 GL 加载器: `pip install jinja2`).
+
 ```sh
 cmake -S desktop -B build/desktop
 cmake --build build/desktop --config Release

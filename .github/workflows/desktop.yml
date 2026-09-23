@@ -24,6 +24,10 @@ jobs:
         with:
           submodules: recursive
 
+      # glad generates its loader at configure time with a Python template engine.
+      - name: Install glad dependencies
+        run: python -m pip install --disable-pip-version-check jinja2
+
       # SDL needs these to build its X11/Wayland video backends.
       - name: Install Linux dependencies
         if: runner.os == 'Linux'

@@ -52,6 +52,9 @@ The same runner that lets the arm64 build execute the game's original 32-bit ARM
 libraries also runs them on a PC, through SDL2 instead of the Android system
 libraries.
 
+Requires CMake 3.20+, a C++20 compiler and Python with `jinja2` (glad generates
+its GL loader at configure time: `pip install jinja2`).
+
 ```sh
 cmake -S desktop -B build/desktop
 cmake --build build/desktop --config Release
