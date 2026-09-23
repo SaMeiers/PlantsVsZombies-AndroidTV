@@ -60,9 +60,16 @@ cmake -S desktop -B build/desktop
 cmake --build build/desktop --config Release
 ```
 
-Run the resulting `pvztv_player` from a directory holding the game's `assets/`
-and the guest libraries; see [Architecture](./ARCHITECTURE.md) for what it loads
-and why.
+Run it from a directory holding the game's `assets/`, and pass the guest
+libraries' `libGameMain.so`:
+
+```sh
+./pvztv_player path/to/libGameMain.so
+```
+
+`libHomura.so` must sit next to it (the mod implements the touch UI, and both
+builds rely on it), along with `libGameRegister.so`, `libnative_code.so` and
+`libfmodex.so`. See [Architecture](./ARCHITECTURE.md) for what gets loaded and why.
 
 ## Contributing
 

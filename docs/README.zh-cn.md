@@ -58,8 +58,15 @@ cmake -S desktop -B build/desktop
 cmake --build build/desktop --config Release
 ```
 
-在放有游戏 `assets/` 与 guest 库的目录中运行生成的 `pvztv_player`;
-它加载了什么以及为什么这样做, 详见[架构说明](./ARCHITECTURE.zh-cn.md).
+在放有游戏 `assets/` 的目录中运行, 并传入 guest 库的 `libGameMain.so`:
+
+```sh
+./pvztv_player path/to/libGameMain.so
+```
+
+`libHomura.so` 必须与之放在同一目录 (触控 UI 由该模组实现, 两端构建都依赖它),
+`libGameRegister.so`, `libnative_code.so` 和 `libfmodex.so` 同理.
+加载了什么以及为什么这样做, 详见[架构说明](./ARCHITECTURE.zh-cn.md).
 
 ## 参与贡献
 

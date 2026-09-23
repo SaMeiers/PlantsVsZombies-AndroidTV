@@ -783,9 +783,15 @@ int main(int argc, char *argv[]) {
     pvz2_surface_set(winWidth, winHeight);
 
     // Load ARM32 SOs
-    const char *soPath = "C:/proyectos/PlantsVsZombies-AndroidTV/app/src/v115/jniLibs/armeabi-v7a/libGameMain.so";
-    if (argc > 1) {
-        soPath = argv[1];
+    // The guest libraries are not shipped with the player: point it at a
+    // directory holding libGameMain.so and the rest (libHomura.so,
+    // libGameRegister.so, libnative_code.so, libfmodex.so), which the loader
+    // picks up from the same folder.
+    const char *soPath = (argc > 1) ? argv[1] : "libGameMain.so";
+    if (!std::filesystem::exists(soPath)) {
+        fprintf(stderr, "[-] %s not found.\n    Usage: %s [path/to/libGameMain.so]\n",
+                soPath, argv[0]);
+        return 1;
     }
 
     printf("[*] Target SO: %s\n", soPath);
@@ -837,22 +843,6 @@ int main(int argc, char *argv[]) {
 
     // Setup Transmension NativeApp / BridgeApp singletons
     setup_transmension_bridge(&image, &rt);
-
-    // Create custom trampolines for Board touch gameplay virtual table hooks
-    uint32_t tramp_mouse_move = pvz2_elf_add_trampoline(&image, "Board_MouseMove");
-    uint32_t tramp_mouse_down = pvz2_elf_add_trampoline(&image, "Board_MouseDown");
-    uint32_t tramp_mouse_up   = pvz2_elf_add_trampoline(&image, "Board_MouseUp");
-    uint32_t tramp_mouse_drag = pvz2_elf_add_trampoline(&image, "Board_MouseDrag");
-
-    // Create custom trampolines for SeedChooserScreen touch gameplay virtual table hooks
-    uint32_t tramp_sc_mouse_move = pvz2_elf_add_trampoline(&image, "SeedChooser_MouseMove");
-    uint32_t tramp_sc_mouse_down = pvz2_elf_add_trampoline(&image, "SeedChooser_MouseDown");
-    uint32_t tramp_sc_mouse_up   = pvz2_elf_add_trampoline(&image, "SeedChooser_MouseUp");
-    uint32_t tramp_sc_mouse_drag = pvz2_elf_add_trampoline(&image, "SeedChooser_MouseDrag");
-
-    // Create custom trampolines for AwardScreen touch virtual table hooks
-    uint32_t tramp_award_mouse_down = pvz2_elf_add_trampoline(&image, "AwardScreen_MouseDown");
-    uint32_t tramp_award_mouse_up   = pvz2_elf_add_trampoline(&image, "AwardScreen_MouseUp");
 
     // Build O(1) import handler cache
     const auto &table = pvz_tv::import_table();
@@ -946,155 +936,11 @@ int main(int argc, char *argv[]) {
 
     printf("\n[+] Static constructors completed! Intercepted %u SVC calls.\n\n", env.svc_calls);
 
-    // --- HLE Fixes for Shutdown & Close Request ---
-    uint32_t so_base = image.modules[0].base;
-
-    // 1. In LawnApp::CloseRequestAsync (0x002b2620), return immediately (bx lr: 0x4770)
-    image.mem[so_base + 0x002b2620] = 0x70;
-    image.mem[so_base + 0x002b2621] = 0x47;
-
-    // 2. In BaseAppDriver::Shutdown (0x003f384c), return immediately (bx lr: 0x4770)
-    image.mem[so_base + 0x003f384c] = 0x70;
-    image.mem[so_base + 0x003f384d] = 0x47;
-
-    // 3. In LawnApp::Shutdown (0x002c1554), return immediately (bx lr: 0x4770, nop: 0xbf00)
-    image.mem[so_base + 0x002c1554] = 0x70;
-    image.mem[so_base + 0x002c1555] = 0x47;
-    image.mem[so_base + 0x002c1556] = 0x00;
-    image.mem[so_base + 0x002c1557] = 0xbf;
-
+    // Nothing in the loaded image is patched: libHomura hooks the UI functions
+    // (AwardScreen, SeedChooserScreen, the shovel, the gamepad cursor) and fixes
+    // them itself, and patching over its hooks corrupts them.
     if (!has_homura) {
-        // 4. In LawnApp::UpdateApp (0x002c23cc), NOP out the cbnz r3, #0x2c23fa at 0x002c23d6
-        //    so that even if mCloseRequest is non-zero, it never branches to Shutdown()
-        image.mem[so_base + 0x002c23d6] = 0x00;
-        image.mem[so_base + 0x002c23d7] = 0xbf;
-    }
-
-    // 5. In main() at 0x00131ee6 and 0x00131ef0, NOP out the call to LawnApp::Shutdown and delete gLawnApp
-    image.mem[so_base + 0x00131ee6] = 0x00;
-    image.mem[so_base + 0x00131ee7] = 0xbf;
-    image.mem[so_base + 0x00131ef0] = 0x00;
-    image.mem[so_base + 0x00131ef1] = 0xbf;
-
-    printf("[+] Applied HLE patches: neutralized CloseRequestAsync, BaseAppDriver::Shutdown, LawnApp::Shutdown, and main() exit.\n");
-
-    if (!has_homura) {
-        // 6. Hook _ZTV5Board virtual function slots for touch gameplay
-        // Slot 77: MouseMove (vptr + 0x12c)
-        // Slot 78: MouseDown (vptr + 0x130)
-        // Slot 81: MouseUp   (vptr + 0x13c)
-        // Slot 83: MouseDrag (vptr + 0x144)
-        uint32_t vtable_board = so_base + 0x00680058;
-        *(uint32_t*)&image.mem[vtable_board + 77 * 4] = tramp_mouse_move;
-        *(uint32_t*)&image.mem[vtable_board + 78 * 4] = tramp_mouse_down;
-        *(uint32_t*)&image.mem[vtable_board + 81 * 4] = tramp_mouse_up;
-        *(uint32_t*)&image.mem[vtable_board + 83 * 4] = tramp_mouse_drag;
-        printf("[+] Hooked _ZTV5Board slots 77, 78, 81, 83 to enable native touch gameplay!\n");
-
-        // 6b. Hook _ZTV17SeedChooserScreen virtual function slots for touch plant selection
-        // Slot 77: MouseMove (0x0067fcac)
-        // Slot 78: MouseDown (0x0067fcb0)
-        // Slot 81: MouseUp   (0x0067fcbc)
-        // Slot 83: MouseDrag (0x0067fcc4)
-        uint32_t vtable_seed_chooser = so_base + 0x0067fb78;
-        *(uint32_t*)&image.mem[vtable_seed_chooser + 77 * 4] = tramp_sc_mouse_move;
-        *(uint32_t*)&image.mem[vtable_seed_chooser + 78 * 4] = tramp_sc_mouse_down;
-        *(uint32_t*)&image.mem[vtable_seed_chooser + 81 * 4] = tramp_sc_mouse_up;
-        *(uint32_t*)&image.mem[vtable_seed_chooser + 83 * 4] = tramp_sc_mouse_drag;
-        printf("[+] Hooked _ZTV17SeedChooserScreen slots 77, 78, 81, 83 to enable native touch seed selection!\n");
-
-        // 6e. Neutralize SeedChooserScreen::UpdateViewLawn (0x0014c7b8) so it never animates/moves the chooser
-        image.mem[so_base + 0x0014c7b8] = 0x70; // bx lr (Thumb 0x4770)
-        image.mem[so_base + 0x0014c7b9] = 0x47;
-        printf("[+] Patched SeedChooserScreen::UpdateViewLawn to return immediately (preventing slide)!\n");
-
-        // 6f. Patch SeedChooserScreen::ButtonDepress (0x0014e7a6) to never trigger ViewLawn (id 102)
-        image.mem[so_base + 0x0014e7a6] = 0x00; // nop (Thumb 0xbf00)
-        image.mem[so_base + 0x0014e7a7] = 0xbf;
-
-        // Neutralize abort guards in SeedChooserScreen::ButtonDepress (0x0014e790, 0x0014e79a, 0x0014e7a2)
-        // so button presses are never dropped due to mSeedsInFlight, mChooseState, or !mMouseVisible
-        image.mem[so_base + 0x0014e790] = 0x00; // b #0x14e794 (0xe000)
-        image.mem[so_base + 0x0014e791] = 0xe0;
-        image.mem[so_base + 0x0014e79a] = 0x00; // nop (0xbf00)
-        image.mem[so_base + 0x0014e79b] = 0xbf;
-        image.mem[so_base + 0x0014e7a2] = 0x00; // nop (0xbf00)
-        image.mem[so_base + 0x0014e7a3] = 0xbf;
-        printf("[+] Patched SeedChooserScreen::ButtonDepress to accept button clicks unconditionally!\n");
-
-    // 6g. Universal ButtonWidget touch/mouse activation:
-    // In ButtonWidget::TouchUp (0x002f8d84), change cbz r3, #0x2f8d8e to b #0x2f8d98 (0x08 0xe0)
-    // In ButtonWidget::MouseUp (0x002f9976), change cbz r3, #0x2f9980 to b #0x2f998c (0x09 0xe0)
-    // This allows ALL buttons across the entire game (menus, dialogs, chooser, store, etc.) to trigger ButtonDepress on click/touch!
-    image.mem[so_base + 0x002f8d84] = 0x08;
-    image.mem[so_base + 0x002f8d85] = 0xe0;
-    image.mem[so_base + 0x002f9976] = 0x09;
-    image.mem[so_base + 0x002f9977] = 0xe0;
-    printf("[+] Applied universal ButtonWidget patch: TouchUp and MouseUp always trigger ButtonDepress!\n");
-
-        // 7. Fix AwardScreen click handling
-        // Hook _ZTV11AwardScreen virtual function table slots (0x0067f370)
-        // Slot 78: MouseDown (0x67f4a8)
-        // Slot 81: MouseUp   (0x67f4b4)
-        uint32_t vtable_award_screen = so_base + 0x0067f370;
-        *(uint32_t*)&image.mem[vtable_award_screen + 78 * 4] = tramp_award_mouse_down;
-        *(uint32_t*)&image.mem[vtable_award_screen + 81 * 4] = tramp_award_mouse_up;
-        printf("[+] Hooked _ZTV11AwardScreen slots 78 and 81 to native AwardScreen handlers!\n");
-
-        // AwardScreen::MouseUp (0x00145928) originally has:
-        //   cmp r3, #1
-        //   beq 0x14592e
-        //   bx lr
-        //   b.w 0x145714 ; StartButtonPressed()
-        // Patch cmp r3, #1 to branch unconditionally to StartButtonPressed()
-        image.mem[so_base + 0x00145928] = 0x01;
-        image.mem[so_base + 0x00145929] = 0xe0; // b #0x14592e
-        image.mem[so_base + 0x0014592a] = 0x00;
-        image.mem[so_base + 0x0014592b] = 0xbf; // nop
-
-        // AwardScreen::MouseDown (0x00143e64) originally exits if r3 != 1 before PlaySample(SOUND_TAP).
-        // Patch 0x00143e6c (beq #0x143e70) to b #0x143e70 (0xe000) so tap sound always plays!
-        image.mem[so_base + 0x00143e6c] = 0x00;
-        image.mem[so_base + 0x00143e6d] = 0xe0; // b #0x143e70
-        printf("[+] Applied AwardScreen patches: unconditional MouseUp -> StartButtonPressed & tap sound.\n");
-
-        // 8. Shovel & Tool Cursor rendering in GamepadControls::Draw
-        // Originally at 0x001c0482:
-        //   cmp r2, #7
-        //   beq.w #0x1c0862
-        // Change to:
-        //   cmp r2, #6
-        //   bge.w #0x1c0862
-        // This allows CursorObject::Draw to render the shovel (type 6) and any tool cursor (>=6)!
-        const uint8_t patch_gamepad_draw[6] = { 0x06, 0x2a, 0x00, 0xf0, 0xed, 0xa9 };
-        memcpy(&image.mem[so_base + 0x001c0482], patch_gamepad_draw, 6);
-
-        // 9. Hide Shovel in ShovelBank when shovel is picked up
-        // In Board::DrawShovel (0x0015d0d1), replace unconditional call to Graphics::DrawImage(IMAGE_SHOVEL)
-        // with a call to our stub that checks if mCursorObject->mCursorType == 6.
-        // Place stub at so_base + 0x0066be00:
-        const uint8_t shovel_stub[26] = {
-            0xd4, 0xf8, 0x38, 0xc2, // ldr.w ip, [r4, #0x238]
-            0xbc, 0xf1, 0x00, 0x0f, // cmp.w ip, #0
-            0x04, 0xd0,             // beq +8 -> jump to b.w
-            0xdc, 0xf8, 0x40, 0xc0, // ldr.w ip, [ip, #0x40]
-            0xbc, 0xf1, 0x06, 0x0f, // cmp.w ip, #6
-            0x08, 0xbf,             // it eq
-            0x70, 0x47,             // bxeq lr (skip drawing if holding shovel!)
-            0x9d, 0xf4, 0x9f, 0xbd  // b.w Graphics::DrawImage (0x00309958)
-        };
-        memcpy(&image.mem[so_base + 0x0066be00], shovel_stub, 26);
-
-        // Patch Board::DrawShovel call site 1 (Normal level: 0x0015d152) -> bl stub
-        const uint8_t bl1[4] = { 0x0e, 0xf1, 0x55, 0xf6 };
-        memcpy(&image.mem[so_base + 0x0015d152], bl1, 4);
-
-        // Patch Board::DrawShovel call site 2 (Conveyor level: 0x0015d1fe) -> bl stub
-        const uint8_t bl2[4] = { 0x0e, 0xf1, 0xff, 0xf5 };
-        memcpy(&image.mem[so_base + 0x0015d1fe], bl2, 4);
-        printf("[+] Applied Shovel patches: cursor rendering enabled & shovel bank hides when held!\n");
-    } else {
-        printf("[+] libHomura.so active: skipping manual Board/SeedChooser/AwardScreen/Shovel patches so Homura handles touch natively!\n");
+        printf("[-] libHomura.so is not loaded: the game's touch UI will not work.\n");
     }
 
     // Call libGameMain.so entry point: main(0, NULL) at 0x00131e15 (Thumb)
