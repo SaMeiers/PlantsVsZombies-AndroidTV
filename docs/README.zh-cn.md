@@ -60,6 +60,19 @@ cmake --build build/desktop --config Release
 
 ## 参与贡献
 
+### 修改 runner
+
+`runner/` 由 Android 应用与 PC 播放器共用, 因此 `runner/src/platform/` 之外的改动会同时影响两端.
+提交前请两边都构建一次:
+
+```sh
+./gradlew assembleV115Release                      # Android (arm64 + armeabi-v7a)
+cmake -S desktop -B build/desktop && cmake --build build/desktop --config Release
+```
+
+guest 库如何加载, 以及它们的调用如何到达宿主, 详见[架构说明](./ARCHITECTURE.zh-cn.md).
+
+
 ### 编码风格 (C++)
 
 #### 命名约定

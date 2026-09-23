@@ -63,6 +63,20 @@ and why.
 
 ## Contributing
 
+### Working on the runner
+
+`runner/` is shared by the Android app and the PC player, so anything you change
+outside `runner/src/platform/` affects both. Build both before sending a change:
+
+```sh
+./gradlew assembleV115Release                      # Android (arm64 + armeabi-v7a)
+cmake -S desktop -B build/desktop && cmake --build build/desktop --config Release
+```
+
+[Architecture](./ARCHITECTURE.md) explains how the guest libraries are loaded and
+how their calls reach the host.
+
+
 ### Coding Style (C++)
 
 #### Name Convention
